@@ -58,6 +58,14 @@ test('real Keycloak login and Docker WSS share, transfer and stop', async ({brow
     await expect.poll(async () => Number(await viewer.getByTestId('frames').textContent())).toBeGreaterThan(10);
     await expect(viewer.locator('canvas')).not.toHaveClass(/hidden/);
     await viewer.screenshot({path: '../artifacts/local/docker-viewer.png', fullPage: true});
+    await viewer.getByRole('button', {name: '全屏观看', exact: true}).click();
+    await expect(viewer.getByRole('button', {name: '退出全屏', exact: true})).toBeVisible();
+    expect(await viewer.evaluate(() => document.fullscreenElement?.className)).toBe('stage-panel');
+    const beforeFullscreenFrames = Number(await viewer.getByTestId('frames').textContent());
+    await expect.poll(async () => Number(await viewer.getByTestId('frames').textContent())).toBeGreaterThan(beforeFullscreenFrames + 10);
+    await viewer.screenshot({path: '../artifacts/local/docker-viewer-fullscreen.png'});
+    await viewer.getByRole('button', {name: '退出全屏', exact: true}).click();
+    await expect.poll(() => viewer.evaluate(() => document.fullscreenElement === null)).toBe(true);
     expect(await host.evaluate(() => (window as unknown as {captureOptions: DisplayMediaStreamOptions}).captureOptions.audio)).toBe(false);
     await host.getByLabel('共享者').selectOption({label: 'Bob Local Demo'});
     await host.getByRole('button', {name: '转交共享权'}).click();
