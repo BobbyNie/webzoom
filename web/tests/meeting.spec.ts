@@ -58,3 +58,14 @@ test('viewer reconnects and browser stop clears the shared image',async({browser
  expect(urls.every(u=>u.startsWith('https://127.0.0.1:')||u.startsWith('wss://127.0.0.1:'))).toBe(true);
  await c1.close();await c2.close();
 });
+
+test('screen encoding does not depend on the visible-tab animation clock',async({page})=>{
+ await page.addInitScript(()=>{
+  navigator.mediaDevices.getDisplayMedia=async()=>{const c=document.createElement('canvas');c.width=1920;c.height=1080;const ctx=c.getContext('2d')!;let n=0;setInterval(()=>{ctx.fillStyle=++n%2?'#007c70':'#164866';ctx.fillRect(0,0,1920,1080)},33);return c.captureStream(30)};
+  window.requestAnimationFrame=()=>{throw new Error('animation clock is unavailable in a hidden sharing tab')};
+ });
+ await login(page,'HiddenTab');await page.getByRole('button',{name:'创建会议',exact:true}).click();await expect(page).toHaveURL(/\/m\//);
+ await page.getByRole('button',{name:'共享屏幕',exact:true}).click();
+ await expect.poll(async()=>Number(await page.getByTestId('frames').textContent())).toBeGreaterThan(0);
+ await expect(page.getByTestId('share-state')).toHaveText('正在共享');
+});

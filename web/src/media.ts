@@ -10,19 +10,26 @@ export async function captureScreen(devices:MediaDevices=navigator.mediaDevices)
 export async function checkCapabilities():Promise<void>{
  if(!window.isSecureContext)throw new Error('需要通过可信 HTTPS 地址访问。');
  if(!/Chrome\//.test(navigator.userAgent)||/Android|Mobile/.test(navigator.userAgent))throw new Error('请使用桌面版 Chrome 或 Edge。');
- if(!navigator.mediaDevices?.getDisplayMedia||!('VideoEncoder' in window)||!('VideoDecoder' in window))throw new Error('此浏览器不支持屏幕采集或 WebCodecs。');
+ if(!navigator.mediaDevices?.getDisplayMedia||!('VideoEncoder' in window)||!('VideoDecoder' in window)||!('MediaStreamTrackProcessor' in window))throw new Error('此浏览器不支持屏幕采集或 WebCodecs。');
  const [enc,dec]=await Promise.all([VideoEncoder.isConfigSupported({codec:'vp8',width:1920,height:1080,bitrate:6_000_000,framerate:30,latencyMode:'realtime'}),VideoDecoder.isConfigSupported({codec:'vp8'})]);
  if(!enc.supported||!dec.supported)throw new Error('此浏览器不能使用 VP8 编码或解码。');
 }
 export interface MediaStats {width:number;height:number;fps:number;level:number;latency?:number;frames:number}
 export class Publisher {
- private encoder:VideoEncoder;private video=document.createElement('video');private canvas=document.createElement('canvas');
- private adaptation=new Adaptation();private seq=0;private epoch:number;private running=true;private raf=0;private lastFrame=-Infinity;private lastKey=-Infinity;private forceKey=true;private needKey=true;private configured='';private frameCount=0;private lastStats=performance.now();private intervalFrames=0;
+ private encoder:VideoEncoder;private reader:ReadableStreamDefaultReader<VideoFrame>|null=null;private canvas=document.createElement('canvas');
+ private adaptation=new Adaptation();private seq=0;private epoch:number;private running=true;private lastFrame=-Infinity;private lastKey=-Infinity;private forceKey=true;private needKey=true;private configured='';private frameCount=0;private lastStats=performance.now();private intervalFrames=0;
  constructor(private stream:MediaStream,epoch:number,private socket:WebSocket,private serverOffset:()=>number,private preview:HTMLCanvasElement,private stats:(s:MediaStats)=>void,private failed:(e:Error)=>void){
-  this.epoch=epoch;this.video.muted=true;this.video.playsInline=true;this.video.srcObject=stream;
+  this.epoch=epoch;
   this.encoder=new VideoEncoder({output:(chunk)=>this.output(chunk),error:(e)=>this.failed(e)});
  }
- async start(){try{await this.video.play();if(this.running)this.raf=requestAnimationFrame(t=>this.tick(t));}catch(e){this.stop();throw e;}}
+ async start(){try{
+  const processor=new MediaStreamTrackProcessor({track:this.stream.getVideoTracks()[0],maxBufferSize:1});
+  this.reader=processor.readable.getReader();void this.pump();
+ }catch(e){this.stop();throw e;}}
+ private async pump(){try{
+  while(this.running&&this.reader){const {value,done}=await this.reader.read();if(done)break;try{this.tick(performance.now(),value)}finally{value.close()}}
+  if(this.running){this.stop();this.failed(new Error('屏幕采集已结束。'))}
+ }catch(e){if(this.running){this.stop();this.failed(e instanceof Error?e:new Error(String(e)))}}}
  keyframe(){this.forceKey=true;}
  congested(){this.adaptation.congested(performance.now());}
  private output(chunk:EncodedVideoChunk){
@@ -32,19 +39,19 @@ export class Publisher {
   this.needKey=false;const data=new Uint8Array(chunk.byteLength);chunk.copyTo(data);
   this.socket.send(pack({epoch:this.epoch,sequence:++this.seq,timestamp:chunk.timestamp,key:chunk.type==='key',width:this.canvas.width,height:this.canvas.height,data}));
  }
- private tick(now:number){
+ private tick(now:number,source:VideoFrame){
   if(!this.running)return;
-  this.raf=requestAnimationFrame(t=>this.tick(t));this.adaptation.stable(now);const p=profiles[this.adaptation.level];
-  if(now-this.lastFrame<1000/p.fps-1||this.video.readyState<2)return;
+  this.adaptation.stable(now);const p=profiles[this.adaptation.level];
+  if(now-this.lastFrame<1000/p.fps-1||!source.displayWidth||!source.displayHeight)return;
   this.lastFrame=now;
   if(this.socket.bufferedAmount>512*1024){this.congested();this.forceKey=true;this.needKey=true;return;}
   if(this.encoder.encodeQueueSize>=2){this.congested();return;}
   try{
-   const ratio=Math.min(p.width/this.video.videoWidth,p.height/this.video.videoHeight,1);
-   const width=Math.max(2,Math.floor(this.video.videoWidth*ratio/2)*2),height=Math.max(2,Math.floor(this.video.videoHeight*ratio/2)*2);
+   const ratio=Math.min(p.width/source.displayWidth,p.height/source.displayHeight,1);
+   const width=Math.max(2,Math.floor(source.displayWidth*ratio/2)*2),height=Math.max(2,Math.floor(source.displayHeight*ratio/2)*2);
    const config=`${width}:${height}:${p.bitrate}:${p.fps}`;
    if(config!==this.configured){this.encoder.reset();this.canvas.width=width;this.canvas.height=height;this.preview.width=width;this.preview.height=height;this.encoder.configure({codec:'vp8',width,height,bitrate:p.bitrate,framerate:p.fps,latencyMode:'realtime'});this.configured=config;this.forceKey=true;this.needKey=true;}
-   this.canvas.getContext('2d',{alpha:false})!.drawImage(this.video,0,0,width,height);
+   this.canvas.getContext('2d',{alpha:false})!.drawImage(source,0,0,width,height);
    this.preview.getContext('2d',{alpha:false})!.drawImage(this.canvas,0,0);
    const frame=new VideoFrame(this.canvas,{timestamp:Math.round((Date.now()+this.serverOffset())*1000)});
    const key=this.forceKey||now-this.lastKey>=1000;
@@ -54,7 +61,7 @@ export class Publisher {
    if(now-this.lastStats>=1000){this.stats({width,height,fps:Math.round(this.intervalFrames*1000/(now-this.lastStats)),level:this.adaptation.level,frames:this.frameCount});this.intervalFrames=0;this.lastStats=now;}
   }catch(e){this.stop();this.failed(e instanceof Error?e:new Error(String(e)));}
  }
- stop(){if(!this.running)return;this.running=false;cancelAnimationFrame(this.raf);this.stream.getTracks().forEach(t=>t.stop());if(this.encoder.state!=='closed')this.encoder.close();this.video.pause();this.video.srcObject=null;}
+ stop(){if(!this.running)return;this.running=false;void this.reader?.cancel().catch(()=>{});this.reader=null;this.stream.getTracks().forEach(t=>t.stop());if(this.encoder.state!=='closed')this.encoder.close();}
 }
 export class Viewer {
  private gate=new FrameGate();private decoder:VideoDecoder|null=null;private dimensions='';private epoch=0;private frameCount=0;private intervalFrames=0;private lastStats=performance.now();private level=0;
