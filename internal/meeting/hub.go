@@ -21,6 +21,7 @@ type User struct {
 	Name string `json:"name"`
 }
 type Snapshot struct {
+	Quality      int       `json:"quality"`
 	ID           string    `json:"id"`
 	OwnerID      string    `json:"ownerId"`
 	PublisherID  string    `json:"publisherId"`
@@ -166,6 +167,7 @@ func (h *Hub) broadcast(r *room) {
 func (h *Hub) reset(r *room) {
 	r.Epoch++
 	r.Active = false
+	r.Quality = 0
 	r.hasSequence = false
 	r.lastKey = time.Time{}
 	for _, p := range r.peers {
@@ -364,4 +366,24 @@ func (h *Hub) Counts() (rooms, connections, queued int) {
 		}
 	}
 	return
+}
+
+func (h *Hub) ReportQuality(p *Peer, level int) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	r, e := h.room(p.RoomID)
+	if e != nil {
+		return e
+	}
+	if !r.Active || r.PublisherID != p.User.ID || r.peers[p.User.ID] != p {
+		return ErrForbidden
+	}
+	if level < 0 || level > 4 {
+		return ErrConflict
+	}
+	if r.Quality != level {
+		r.Quality = level
+		h.broadcast(r)
+	}
+	return nil
 }

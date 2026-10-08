@@ -57,7 +57,7 @@ func TestSessionsExpireAndCSRF(t *testing.T) {
 func TestOIDCCodePKCENonceAndReplay(t *testing.T) {
 	key, _ := rsa.GenerateKey(rand.Reader, 2048)
 	var issuer, nonce, challenge string
-	badNonce := false
+	invalidClaim := ""
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"issuer": issuer, "authorization_endpoint": issuer + "/authorize", "token_endpoint": issuer + "/token", "jwks_uri": issuer + "/keys", "id_token_signing_alg_values_supported": []string{"RS256"}})
@@ -73,15 +73,26 @@ func TestOIDCCodePKCENonceAndReplay(t *testing.T) {
 			return
 		}
 		n := nonce
-		if badNonce {
+		if invalidClaim == "nonce" {
 			n = "wrong"
 		}
 		claims := map[string]any{"iss": issuer, "sub": "alice", "aud": "webzoom", "exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(), "nonce": n, "name": "Alice"}
+		switch invalidClaim {
+		case "issuer":
+			claims["iss"] = "https://evil.example"
+		case "audience":
+			claims["aud"] = "other-client"
+		case "expired":
+			claims["exp"] = time.Now().Add(-time.Hour).Unix()
+		}
 		body, _ := json.Marshal(claims)
 		header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","kid":"test"}`))
 		unsigned := header + "." + base64.RawURLEncoding.EncodeToString(body)
 		hash := sha256.Sum256([]byte(unsigned))
 		sig, _ := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, hash[:])
+		if invalidClaim == "signature" {
+			sig[0] ^= 0xff
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600, "id_token": unsigned + "." + base64.RawURLEncoding.EncodeToString(sig)})
 	})
@@ -93,8 +104,8 @@ func TestOIDCCodePKCENonceAndReplay(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	for _, invalid := range []bool{false, true} {
-		badNonce = invalid
+	for _, invalid := range []string{"", "nonce", "issuer", "audience", "expired", "signature"} {
+		invalidClaim = invalid
 		rr := httptest.NewRecorder()
 		m.Login(rr, httptest.NewRequest("GET", "https://share.example/auth/login?next=/m/test", nil))
 		loc, _ := url.Parse(rr.Header().Get("Location"))
@@ -112,7 +123,7 @@ func TestOIDCCodePKCENonceAndReplay(t *testing.T) {
 		r.AddCookie(cookies[0])
 		out := httptest.NewRecorder()
 		m.Callback(out, r)
-		if invalid {
+		if invalid != "" {
 			if out.Code != http.StatusUnauthorized {
 				t.Fatal("bad nonce accepted", out.Code)
 			}

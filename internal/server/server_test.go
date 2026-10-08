@@ -157,3 +157,25 @@ func TestMetricsRequireSeparateToken(t *testing.T) {
 		t.Fatal(fmt.Sprint(res.StatusCode))
 	}
 }
+
+func TestSocketExpiresWithoutIncomingTraffic(t *testing.T) {
+	ts, a, h := testApp(t)
+	s, _ := a.NewSession(meeting.User{ID: "short"}, time.Now().Add(500*time.Millisecond))
+	room, _ := h.Create(s.User)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	conn, _, e := websocket.Dial(ctx, "wss"+strings.TrimPrefix(ts.URL, "https")+"/api/rooms/"+room.ID+"/ws", &websocket.DialOptions{HTTPClient: ts.Client(), HTTPHeader: http.Header{"Origin": []string{ts.URL}, "Cookie": []string{auth.SessionCookie + "=" + s.ID}}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer conn.CloseNow()
+	for {
+		_, _, e = conn.Read(ctx)
+		if e != nil {
+			break
+		}
+	}
+	if websocket.CloseStatus(e) != websocket.StatusPolicyViolation {
+		t.Fatalf("expired socket not closed: %v", e)
+	}
+}

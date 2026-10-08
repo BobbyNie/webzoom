@@ -157,3 +157,45 @@ func TestSequenceAndKeyframeGate(t *testing.T) {
 		t.Fatal("duplicate sequence")
 	}
 }
+
+func TestQualityOnlyFromCurrentPublisher(t *testing.T) {
+	h, r, p, v := setup(t)
+	h.Action(r.ID, owner.ID, "start", "")
+	if e := h.ReportQuality(v, 2); e == nil {
+		t.Fatal("viewer forged quality")
+	}
+	if e := h.ReportQuality(p, 5); e == nil {
+		t.Fatal("invalid quality")
+	}
+	if e := h.ReportQuality(p, 2); e != nil {
+		t.Fatal(e)
+	}
+	s, _ := h.Get(r.ID)
+	if s.Quality != 2 {
+		t.Fatal("quality not in snapshot")
+	}
+}
+
+func TestSlowViewerDoesNotBlockFastViewer(t *testing.T) {
+	h, r, p, slow := setup(t)
+	fast, e := h.Join(r.ID, User{ID: "fast"}, "fast-session")
+	if e != nil {
+		t.Fatal(e)
+	}
+	s, _ := h.Action(r.ID, owner.ID, "start", "")
+	for i := uint32(1); i <= 1000; i++ {
+		if e := h.Publish(p, frame(s.Epoch, i, i%30 == 1)); e != nil {
+			t.Fatal(e)
+		}
+		if fast.Media.Len() != 1 {
+			t.Fatal("fast viewer stalled")
+		}
+		fast.Media.Pop()
+		if slow.Media.Len() > 8 {
+			t.Fatal("slow queue unbounded")
+		}
+	}
+	if h.Metrics.Dropped.Load() == 0 {
+		t.Fatal("slow viewer did not drop frames")
+	}
+}

@@ -189,6 +189,10 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 			switch msg.Type {
 			case "keyframe":
 				a.Hub.RequestKeyframe(p)
+			case "quality":
+				if a.Hub.ReportQuality(p, msg.Level) != nil {
+					return
+				}
 			case "feedback":
 				a.Hub.Feedback(p, msg.Level)
 			case "clock":

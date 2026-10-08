@@ -1,0 +1,6 @@
+{
+  "name": "webzoom-web", "private": true, "version": "0.1.0", "type": "module",
+  "scripts": {"dev": "vite --host 127.0.0.1", "build": "tsc --noEmit && vite build", "typecheck": "tsc --noEmit", "test": "vitest run", "test:e2e": "playwright test"},
+  "dependencies": {"react": "19.3.0", "react-dom": "19.3.0"},
+  "devDependencies": {"@playwright/test": "1.64.0", "@types/react": "^19.2.0", "@types/react-dom": "^19.2.0", "@types/node": "^22.19.0", "@types/dom-webcodecs": "^0.1.17", "typescript": "^5.9.3", "vite": "8.3.4", "vitest": "5.0.3"}
+}
