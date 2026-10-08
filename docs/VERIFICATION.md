@@ -33,7 +33,7 @@ Go TLS 和 Nginx 代理测试使用明确受信任的测试 CA，不跳过校验
 | `npm run build` | TypeScript 检查和生产构建通过 | 不证明目标设备编码性能 |
 | `npm run test:e2e` | 7 项 Chromium 测试通过 | 未覆盖真实 Chrome/Edge、实际 OS 授权和长时负载 |
 | `docker build -t webzoom:local .` | 镜像构建通过，包含 Go/前端测试 | 未做多架构发布认证 |
-| `go test -tags deploymenttests -v ./internal/deploy` | 2 项临时容器测试通过 | 未连接真实 Keycloak 或 OpenShift |
+| `go test -tags deploymenttests -v ./internal/deploy` | 3 项临时容器测试通过 | 未连接真实 Keycloak 或 OpenShift |
 | `docker compose --env-file .env.example config --quiet` | 配置解析通过 | 占位证书和 Secret 不能直接启动生产服务 |
 | `kubectl kustomize deploy/openshift` | 清单渲染通过 | 未做目标集群服务端 dry-run |
 | `npm audit --json` | 已知漏洞 0 项 | 不能证明没有未知漏洞 |
@@ -66,14 +66,15 @@ Go TLS 和 Nginx 代理测试使用明确受信任的测试 CA，不跳过校验
 网络测试收集到的业务请求均为本地 HTTPS/WSS。
 真实网关抓包、真实权限弹窗和目标浏览器的音轨检查仍需要执行。
 
-### 两项容器测试
+### 三项容器测试
 
-1. 以 UID `1001230000`、GID `0`、只读根文件系统和零 capabilities 启动生产镜像。
+1. 使用镜像默认 UID/GID `65532:65532`，验证只读根文件系统下正常启动。
+2. 以 UID `1001230000`、GID `0`、只读根文件系统和零 capabilities 启动生产镜像。
    测试检查就绪接口、打包页面，以及匿名 API 拒绝。
-2. 启动实际 Nginx TLS 代理容器。
+3. 启动实际 Nginx TLS 代理容器。
    经过 HTTPS 入口连接认证 WSS，确认二进制媒体封包保持不变。
 
-第二项测试使用测试进程内创建的会话。它不代替真实 Keycloak 登录链路验证。
+第三项测试使用测试进程内创建的会话。它不代替真实 Keycloak 登录链路验证。
 临时容器会由测试清理。生产镜像不包含测试身份服务。
 
 ## 3. 1000 名模拟听众的短时测试

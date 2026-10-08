@@ -14,3 +14,6 @@ coverage*
 .secrets/
 artifacts/
 *.sessions.json
+
+__pycache__/
+*.pyc

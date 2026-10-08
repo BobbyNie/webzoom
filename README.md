@@ -68,6 +68,14 @@ Keycloak 使用私有 CA 时，使用 `compose.ca.yaml`。具体步骤见部署�
 该 Deployment 固定为一个副本，并使用 Recreate 更新策略。
 不要增加副本，不要启用 HPA。升级会中断现有会议。
 
+## 自动构建与镜像发布
+
+GitHub Actions 对拉取请求执行检查。`main` 分支和 `v*` 标签通过检查后发布到
+`ghcr.io/bobbynie/webzoom`。首次发布架构为 `linux/amd64`。
+发布任务使用已经通过容器测试的同一个镜像，不重新构建。
+镜像默认使用 `65532:65532`，并支持 OpenShift 分配的任意非 root UID。
+发布标签、访问权限和部署步骤见 [CI 说明](docs/CI.md)。
+
 ## 开发与验证
 
 必要条件：Go 1.26.8、Node.js 22、npm，以及桌面 Chromium 测试环境。

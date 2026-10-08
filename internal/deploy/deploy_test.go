@@ -99,7 +99,19 @@ func waitHealthy(t *testing.T, client *http.Client, url string) {
 	}
 	t.Fatal("service did not become ready")
 }
+func TestReadOnlyImageWithDefaultNonRootUID(t *testing.T) {
+	if user := docker(t, "image", "inspect", "webzoom:local", "--format", "{{.Config.User}}"); user != "65532:65532" {
+		t.Fatalf("image must default to numeric non-root UID/GID, got %q", user)
+	}
+	checkReadOnlyImage(t, nil)
+}
+
 func TestReadOnlyImageWithArbitraryUID(t *testing.T) {
+	checkReadOnlyImage(t, []string{"--user", "1001230000:0"})
+}
+
+func checkReadOnlyImage(t *testing.T, user []string) {
+	t.Helper()
 	dir, _, pair := certificates(t)
 	listener, e := net.Listen("tcp", "0.0.0.0:0")
 	if e != nil {
@@ -115,7 +127,8 @@ func TestReadOnlyImageWithArbitraryUID(t *testing.T) {
 	provider.TLS = &tls.Config{Certificates: []tls.Certificate{pair}}
 	provider.StartTLS()
 	defer provider.Close()
-	name := container(t, "--read-only", "--user", "1001230000:0", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--add-host", "example.com:host-gateway", "-p", "127.0.0.1::8080", "-v", dir+":/trust:ro", "-e", "SSL_CERT_FILE=/trust/fullchain.pem", "-e", "PUBLIC_URL=https://webzoom.example.test", "-e", "OIDC_ISSUER="+issuer, "-e", "OIDC_CLIENT_ID=fixture", "-e", "OIDC_CLIENT_SECRET=test-only", "webzoom:local")
+	args := append(user, "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--add-host", "example.com:host-gateway", "-p", "127.0.0.1::8080", "-v", dir+":/trust:ro", "-e", "SSL_CERT_FILE=/trust/fullchain.pem", "-e", "PUBLIC_URL=https://webzoom.example.test", "-e", "OIDC_ISSUER="+issuer, "-e", "OIDC_CLIENT_ID=fixture", "-e", "OIDC_CLIENT_SECRET=test-only", "webzoom:local")
+	name := container(t, args...)
 	url := "http://127.0.0.1:" + port(t, name, "8080/tcp")
 	waitHealthy(t, http.DefaultClient, url)
 	res, e := http.Get(url + "/api/me")
