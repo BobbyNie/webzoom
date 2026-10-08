@@ -62,6 +62,18 @@ func New(ctx context.Context, c Config) (*Manager, error) {
 	if e != nil {
 		return nil, e
 	}
+	var discovery struct {
+		JWKS string `json:"jwks_uri"`
+	}
+	if e := provider.Claims(&discovery); e != nil {
+		return nil, e
+	}
+	for _, endpoint := range []string{provider.Endpoint().AuthURL, provider.Endpoint().TokenURL, discovery.JWKS} {
+		u, err := url.Parse(endpoint)
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+			return nil, errors.New("OIDC discovery endpoints must use HTTPS")
+		}
+	}
 	m := NewStore(strings.TrimSuffix(c.PublicURL, "/"))
 	m.client = client
 	m.verifier = provider.Verifier(&oidc.Config{ClientID: c.ClientID})

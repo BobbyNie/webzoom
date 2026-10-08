@@ -174,3 +174,22 @@ func TestRejectWrongStateAndExternalRedirect(t *testing.T) {
 		t.Fatal("state leaked")
 	}
 }
+
+func TestOIDCRejectsInsecureDiscoveredEndpoints(t *testing.T) {
+	for _, bad := range []string{"authorization_endpoint", "token_endpoint", "jwks_uri"} {
+		t.Run(bad, func(t *testing.T) {
+			var issuer string
+			ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				v := map[string]any{"issuer": issuer, "authorization_endpoint": issuer + "/authorize", "token_endpoint": issuer + "/token", "jwks_uri": issuer + "/keys", "id_token_signing_alg_values_supported": []string{"RS256"}}
+				v[bad] = "http://insecure.example/endpoint"
+				json.NewEncoder(w).Encode(v)
+			}))
+			defer ts.Close()
+			issuer = ts.URL
+			_, e := New(oidc.ClientContext(context.Background(), ts.Client()), Config{PublicURL: "https://app.example", Issuer: issuer, ClientID: "webzoom", ClientSecret: "secret"})
+			if e == nil {
+				t.Fatal("accepted HTTP discovery endpoint", bad)
+			}
+		})
+	}
+}
