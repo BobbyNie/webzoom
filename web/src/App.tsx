@@ -29,6 +29,7 @@ export default function App(){
   function apply(next:Room){
    const previous=roomRef.current;
    if(next.epoch!==previous?.epoch||next.active!==previous?.active){viewer.current?.reset(next.epoch);setStats(blankStats);lastVideo.current=Date.now();setStalled(false);}
+   if(previous?.active&&!next.active&&!next.participants.some(p=>p.id===previous.publisherId))setStalled(true);
    if(publisher.current&&(next.publisherId!==identity!.user.id||!next.active||next.epoch!==previous?.epoch))stopLocal();
    roomRef.current=next;setRoom(next);viewer.current?.setLevel(next.quality??0);
   }

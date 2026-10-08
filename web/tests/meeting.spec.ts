@@ -36,7 +36,7 @@ test('publisher logout clears the viewer screen and denies anonymous APIs',async
  const p=await c1.newPage(),v=await c2.newPage();await fakeScreen(p);await login(p,'David');await p.getByRole('button',{name:'创建会议',exact:true}).click();
  await expect(p).toHaveURL(/\/m\//);const link=p.url();await p.getByRole('button',{name:'共享屏幕',exact:true}).click();await login(v,'Eva');await v.goto(link);
  await expect.poll(()=>v.getByTestId('frames').textContent()).not.toBe('0');
- await p.getByRole('button',{name:'退出',exact:true}).click();await expect(v.getByTestId('share-state')).toHaveText('等待共享');
+ await p.getByRole('button',{name:'退出',exact:true}).click();await expect(v.getByTestId('share-state')).toHaveText('共享已中断');
  await expect(v.locator('canvas')).toHaveClass(/hidden/);
  expect((await c1.request.get('/api/me')).status()).toBe(401);await c1.close();await c2.close();
 });
@@ -68,4 +68,17 @@ test('screen encoding does not depend on the visible-tab animation clock',async(
  await page.getByRole('button',{name:'共享屏幕',exact:true}).click();
  await expect.poll(async()=>Number(await page.getByTestId('frames').textContent())).toBeGreaterThan(0);
  await expect(page.getByTestId('share-state')).toHaveText('正在共享');
+});
+
+test('publisher disconnect explicitly interrupts viewers until a fresh share starts',async({browser})=>{
+ const c1=await browser.newContext({ignoreHTTPSErrors:true}),c2=await browser.newContext({ignoreHTTPSErrors:true});
+ const p=await c1.newPage(),v=await c2.newPage();await fakeScreen(p);
+ await p.addInitScript(()=>{const Original=window.WebSocket;(window as any).testSockets=[];window.WebSocket=class extends Original{constructor(...args:ConstructorParameters<typeof WebSocket>){super(...args);(window as any).testSockets.push(this)}}});
+ await login(p,'InterruptedPublisher');await p.getByRole('button',{name:'创建会议',exact:true}).click();await expect(p).toHaveURL(/\/m\//);const link=p.url();
+ await p.getByRole('button',{name:'共享屏幕',exact:true}).click();await login(v,'InterruptedViewer');await v.goto(link);await expect.poll(()=>v.getByTestId('frames').textContent()).not.toBe('0');
+ await p.evaluate(()=>{(window as any).testSockets.at(-1).close()});
+ await expect(v.getByTestId('share-state')).toHaveText('共享已中断');await expect(v.locator('canvas')).toHaveClass(/hidden/);
+ await expect(p.getByRole('button',{name:'共享屏幕',exact:true})).toBeEnabled();await p.getByRole('button',{name:'共享屏幕',exact:true}).click();
+ await expect(v.getByTestId('share-state')).toHaveText('正在共享');await expect.poll(()=>v.getByTestId('frames').textContent()).not.toBe('0');
+ await c1.close();await c2.close();
 });
