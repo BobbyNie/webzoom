@@ -85,6 +85,9 @@ Docker Compose 默认使用本地构建。若改用 GHCR 镜像，替换 app 的
 
 ## 6. 本地验证工作流
 
+先安装 ShellCheck 并确认它在 `PATH` 中。Actionlint 在找不到 ShellCheck 时会跳过 shell 检查。
+GitHub 托管运行器包含 ShellCheck；本地检查必须包含同一检查阶段。
+
 ```sh
 python3 -m venv /tmp/webzoom-workflow-venv
 /tmp/webzoom-workflow-venv/bin/pip install -r .github/tests/requirements.txt

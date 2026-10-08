@@ -158,8 +158,8 @@ jobs:
           done <<< "$IMAGE_TAGS"
           {
             echo '## Published non-root image'
-            printf 'Image: `%s`\n\n' "$IMAGE_NAME"
-            printf 'Default UID/GID: `65532:65532`. Platform: `linux/amd64`.\n\n'
+            printf 'Image: %s\n\n' "$IMAGE_NAME"
+            printf 'Default UID/GID: 65532:65532. Platform: linux/amd64.\n\n'
             printf 'Tested with an arbitrary non-root UID and a read-only root filesystem.\n\n'
             echo '```text'
             docker image inspect webzoom:local --format '{{join .RepoDigests "\n"}}'
