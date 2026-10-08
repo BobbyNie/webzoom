@@ -387,3 +387,15 @@ func (h *Hub) ReportQuality(p *Peer, level int) error {
 	}
 	return nil
 }
+
+// QualityLevels counts active rooms, not merely congestion reports.
+func (h *Hub) QualityLevels() (levels [5]int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, r := range h.rooms {
+		if r.Active {
+			levels[r.Quality]++
+		}
+	}
+	return
+}

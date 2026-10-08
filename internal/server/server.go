@@ -276,6 +276,9 @@ func (a *app) metrics(w http.ResponseWriter, r *http.Request) {
 	rooms, connections, queued := a.Hub.Counts()
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	fmt.Fprintf(w, "webzoom_rooms %d\nwebzoom_connections %d\nwebzoom_queued_frames %d\nwebzoom_ingress_bytes_total %d\nwebzoom_egress_bytes_total %d\nwebzoom_dropped_frames_total %d\nwebzoom_congestion_reports_total %d\n", rooms, connections, queued, a.Hub.Metrics.Ingress.Load(), a.Hub.Metrics.Egress.Load(), a.Hub.Metrics.Dropped.Load(), a.Hub.Metrics.Degraded.Load())
+	for level, count := range a.Hub.QualityLevels() {
+		fmt.Fprintf(w, "webzoom_active_rooms_by_quality{level=\"%d\"} %d\n", level, count)
+	}
 }
 func (a *app) static(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" && !strings.HasPrefix(r.URL.Path, "/m/") && !strings.HasPrefix(r.URL.Path, "/assets/") && r.URL.Path != "/favicon.svg" {

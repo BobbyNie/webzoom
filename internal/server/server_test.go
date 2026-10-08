@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/coder/websocket"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -177,5 +178,25 @@ func TestSocketExpiresWithoutIncomingTraffic(t *testing.T) {
 	}
 	if websocket.CloseStatus(e) != websocket.StatusPolicyViolation {
 		t.Fatalf("expired socket not closed: %v", e)
+	}
+}
+
+func TestMetricsExposeActualQuality(t *testing.T) {
+	ts, _, hub := testApp(t)
+	u := meeting.User{ID: "publisher"}
+	r, _ := hub.Create(u)
+	p, _ := hub.Join(r.ID, u, "session")
+	hub.Action(r.ID, u.ID, "start", "")
+	hub.ReportQuality(p, 3)
+	req, _ := http.NewRequest("GET", ts.URL+"/metrics", nil)
+	req.Header.Set("Authorization", "Bearer metrics")
+	res, e := ts.Client().Do(req)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(res.Body)
+	if !strings.Contains(string(b), `webzoom_active_rooms_by_quality{level="3"} 1`) {
+		t.Fatal(string(b))
 	}
 }
