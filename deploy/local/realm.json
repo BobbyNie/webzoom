@@ -1,0 +1,60 @@
+{
+  "realm": "webzoom-local",
+  "enabled": true,
+  "displayName": "WebZoom 本机测试",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "sslRequired": "all",
+  "clients": [
+    {
+      "clientId": "webzoom",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "local-demo-client-secret-not-for-production",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "https://webzoom.localhost:8443/auth/callback"
+      ],
+      "webOrigins": [
+        "https://webzoom.localhost:8443"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Local Demo",
+      "email": "alice@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Local-demo-only-2026!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Local Demo",
+      "email": "bob@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Local-demo-only-2026!",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

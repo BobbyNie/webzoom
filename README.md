@@ -61,6 +61,12 @@ docker compose --env-file .env up -d --build
 只有代理发布宿主机 443 端口。不要为 app 服务增加 `ports`。
 Keycloak 使用私有 CA 时，使用 `compose.ca.yaml`。具体步骤见部署说明。
 
+## 本机 Docker 测试
+
+可启动独立的 Keycloak、WebZoom 和 HTTPS 代理。入口只绑定本机 8443 端口。
+测试账号、证书生成和浏览器验证步骤见 [本机测试说明](deploy/local/README.md)。
+不要将该配置用于生产或改为对外监听。
+
 ## OpenShift
 
 清单在 `deploy/openshift/`。

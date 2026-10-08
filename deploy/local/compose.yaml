@@ -1,0 +1,53 @@
+name: webzoom-local
+services:
+  app:
+    build: ../..
+    image: webzoom:local-demo
+    user: "65532:65532"
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      PUBLIC_URL: https://webzoom.localhost:8443
+      OIDC_ISSUER: https://webzoom.localhost:8443/idp/realms/webzoom-local
+      OIDC_CLIENT_ID: webzoom
+      OIDC_CLIENT_SECRET: local-demo-client-secret-not-for-production
+      SSL_CERT_FILE: /trust/fullchain.pem
+    volumes:
+      - ../../.secrets/local/fullchain.pem:/trust/fullchain.pem:ro
+    networks: [demo]
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.0@sha256:b0f60d489d51c5d113390bdf5461d4c06e6051be026c05549f2e1e10ec352bcc
+    command: [start-dev, --import-realm]
+    user: "1000:0"
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      KC_DB: dev-mem
+      KC_HOSTNAME: https://webzoom.localhost:8443/idp
+      KC_HTTP_RELATIVE_PATH: /idp
+      KC_PROXY_HEADERS: xforwarded
+    volumes:
+      - ./realm.json:/opt/keycloak/data/import/realm.json:ro
+    networks: [demo]
+  proxy:
+    image: nginxinc/nginx-unprivileged:stable-alpine@sha256:15c994d10d6d78658721c3bcafff14cb281fba2a4bdf9d5ba92c416a472516e3
+    entrypoint: [nginx, -g, "daemon off;"]
+    user: "101:101"
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:uid=101,gid=101,mode=1770"]
+    ports: ["127.0.0.1:8443:8443"]
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../../.secrets/local:/etc/webzoom/tls:ro
+    depends_on: [app, keycloak]
+    networks:
+      demo:
+        aliases: [webzoom.localhost]
+networks:
+  demo: {}
