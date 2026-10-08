@@ -10,3 +10,7 @@ coverage*
 *.pem
 *.key
 .DS_Store
+
+.secrets/
+artifacts/
+*.sessions.json

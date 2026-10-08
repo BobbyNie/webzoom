@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: webzoom
+spec:
+  selector: {app: webzoom}
+  ports:
+    - {name: http, port: 8080, targetPort: http}

@@ -1,0 +1,40 @@
+services:
+  app:
+    build: .
+    image: webzoom:local
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:?Set PUBLIC_URL}
+      OIDC_ISSUER: ${OIDC_ISSUER:?Set OIDC_ISSUER}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?Set OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+      METRICS_TOKEN_FILE: /run/secrets/metrics_token
+    secrets: [oidc_client_secret, metrics_token]
+    expose: ["8080"]
+    networks: [backend]
+  proxy:
+    image: nginxinc/nginx-unprivileged:stable-alpine@sha256:15c994d10d6d78658721c3bcafff14cb281fba2a4bdf9d5ba92c416a472516e3
+    entrypoint: [nginx, -g, "daemon off;"]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports: ["443:8443"]
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${TLS_CERT_FILE:?Set TLS_CERT_FILE}:/etc/webzoom/tls/fullchain.pem:ro
+      - ${TLS_KEY_FILE:?Set TLS_KEY_FILE}:/etc/webzoom/tls/privkey.pem:ro
+    tmpfs:
+      - /tmp:uid=101,gid=101,mode=1770
+    depends_on: [app]
+    networks: [backend]
+networks:
+  backend: {}
+secrets:
+  oidc_client_secret:
+    file: ${OIDC_CLIENT_SECRET_FILE:?Set OIDC_CLIENT_SECRET_FILE}
+  metrics_token:
+    file: ${METRICS_TOKEN_FILE:?Set METRICS_TOKEN_FILE}

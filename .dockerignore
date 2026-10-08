@@ -1,0 +1,14 @@
+.git
+.env*
+**/node_modules
+web/dist
+web/test-results
+web/playwright-report
+bin
+artifacts
+*.pem
+*.key
+coverage*
+
+.secrets
+*.sessions.json

@@ -1,0 +1,7 @@
+# Optional overlay for a private Keycloak CA. Supply a complete trusted CA bundle.
+services:
+  app:
+    environment:
+      SSL_CERT_FILE: /etc/webzoom/ca-bundle.pem
+    volumes:
+      - ${OIDC_CA_BUNDLE:?Set OIDC_CA_BUNDLE}:/etc/webzoom/ca-bundle.pem:ro

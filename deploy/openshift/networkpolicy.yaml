@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: webzoom-ingress
+spec:
+  podSelector:
+    matchLabels: {app: webzoom}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: ingress
+      ports:
+        - {protocol: TCP, port: 8080}
+# Egress stays under the cluster policy. The app needs DNS and HTTPS to Keycloak.
+# Add a separate ingress rule for an internal metrics collector if needed.

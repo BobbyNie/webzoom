@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webzoom
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app: webzoom}
+  template:
+    metadata:
+      labels: {app: webzoom}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: webzoom
+          image: image-registry.openshift-image-registry.svc:5000/REPLACE_NAMESPACE/webzoom:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 8080}
+          envFrom:
+            - configMapRef: {name: webzoom-config}
+            - secretRef: {name: webzoom-secrets}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: "2", memory: 1Gi}
+            limits: {cpu: "8", memory: 4Gi}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          volumeMounts:
+            - {name: trusted-ca, mountPath: /etc/webzoom/trust, readOnly: true}
+      volumes:
+        - name: trusted-ca
+          configMap:
+            name: webzoom-trusted-ca
