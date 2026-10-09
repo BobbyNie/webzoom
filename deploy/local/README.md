@@ -53,10 +53,21 @@ Docker 内部通过网络别名解析 `webzoom.localhost`。Chromium 在宿主�
 
 地址：`https://webzoom.localhost:8443`。
 
-| 用户名 | 测试密码 |
-|---|---|
-| `alice` | `Local-demo-only-2026!` |
-| `bob` | `Local-demo-only-2026!` |
+| 用户名 | 显示名称 | 测试密码 |
+|---|---|---|
+| `alice` | Alice Local Demo | `Local-demo-only-2026!` |
+| `bob` | Bob Local Demo | `Local-demo-only-2026!` |
+
+以上是 `realm.json` 导入的全部测试用户。此配置没有创建 Keycloak 管理员账号。
+测试 Realm 为 `webzoom-local`，客户端为 `webzoom`。
+应用通过真实的授权码流程和 PKCE 登录，没有免认证入口。
+自动化测试完成登录后，保留的浏览器可能仍有本应用 Cookie 和 Keycloak SSO Cookie。
+因此，再次打开页面可能直接显示已登录状态。
+
+点击“退出”只退出 WebZoom，不退出 Keycloak。再次登录可能自动使用相同身份。
+测试两个用户时，请使用两个独立浏览器配置文件，或彼此隔离的隐私窗口。
+同一浏览器的多个隐私窗口可能共享 Cookie，不能保证用户隔离。
+本机凭据公开且只用于测试。不要将其用于生产。
 
 1. 使用桌面 Chrome 或 Edge 打开地址。
 2. 点击“使用公司账号登录”。
@@ -117,3 +128,15 @@ docker compose -f deploy/local/compose.yaml up -d
 只有代理发布 `127.0.0.1:8443`。应用和 Keycloak 不发布宿主机端口。
 应用默认 UID/GID 为 `65532:65532`，根文件系统只读，禁止权限提升并删除全部 capabilities。
 代理和 Keycloak 同样使用非 root 用户。Keycloak 开发模式需要可写容器文件系统。
+
+## 会议清理与测试隔离
+
+首页“我创建的会议”只显示当前用户创建且未结束、未过期的会议。
+共享权转交不会改变创建者。创建者可以在首页结束会议，不必先加入会议。
+离开页面、关闭浏览器或停止共享都不会结束会议。
+空会议在 30 分钟后清理；会议最长保留 8 小时。
+
+应用默认不限制会议数量和听众人数。页面不显示数量统计。
+`LOAD_TEST_MAX_ROOMS` 和 `LOAD_TEST_MAX_VIEWERS` 的正值只用于压力测试。
+自动化测试必须只结束自己创建的会议，不能删除同一用户的其他会议。
+重建或重启 app 会删除全部内存会议和本应用登录会话。Keycloak Cookie 可能仍有效。

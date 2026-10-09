@@ -7,6 +7,8 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     environment:
+      LOAD_TEST_MAX_ROOMS: ${LOAD_TEST_MAX_ROOMS:-0}
+      LOAD_TEST_MAX_VIEWERS: ${LOAD_TEST_MAX_VIEWERS:-0}
       PUBLIC_URL: ${PUBLIC_URL:?Set PUBLIC_URL}
       OIDC_ISSUER: ${OIDC_ISSUER:?Set OIDC_ISSUER}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?Set OIDC_CLIENT_ID}

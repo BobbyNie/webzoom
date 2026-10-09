@@ -214,3 +214,36 @@ func TestHTTPSProxyCarriesAuthenticatedBinaryWSS(t *testing.T) {
 	p.CloseNow()
 	watch.CloseNow()
 }
+
+func TestComposeLoadTestLimitsAreDisabledByDefaultAndOptIn(t *testing.T) {
+	for key, value := range map[string]string{
+		"PUBLIC_URL": "https://webzoom.example.test", "OIDC_ISSUER": "https://idp.example.test/realms/company",
+		"OIDC_CLIENT_ID": "webzoom", "OIDC_CLIENT_SECRET_FILE": "/tmp/test-secret", "METRICS_TOKEN_FILE": "/tmp/test-metrics",
+		"TLS_CERT_FILE": "/tmp/test-cert", "TLS_KEY_FILE": "/tmp/test-key",
+	} {
+		t.Setenv(key, value)
+	}
+	for _, file := range []string{"../../compose.yaml", "../../deploy/local/compose.yaml"} {
+		for _, tc := range []struct{ name, rooms, viewers, wantRooms, wantViewers string }{
+			{"default", "", "", "0", "0"}, {"load-test", "5", "200", "5", "200"},
+		} {
+			t.Run(file+"/"+tc.name, func(t *testing.T) {
+				t.Setenv("LOAD_TEST_MAX_ROOMS", tc.rooms)
+				t.Setenv("LOAD_TEST_MAX_VIEWERS", tc.viewers)
+				data := docker(t, "compose", "-f", file, "config", "--format", "json")
+				var config struct {
+					Services map[string]struct {
+						Environment map[string]string `json:"environment"`
+					} `json:"services"`
+				}
+				if err := json.Unmarshal([]byte(data), &config); err != nil {
+					t.Fatal(err)
+				}
+				environment := config.Services["app"].Environment
+				if environment["LOAD_TEST_MAX_ROOMS"] != tc.wantRooms || environment["LOAD_TEST_MAX_VIEWERS"] != tc.wantViewers {
+					t.Fatal("load-test limits not forwarded with correct defaults", environment["LOAD_TEST_MAX_ROOMS"], environment["LOAD_TEST_MAX_VIEWERS"])
+				}
+			})
+		}
+	}
+}

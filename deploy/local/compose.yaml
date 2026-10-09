@@ -9,6 +9,8 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     environment:
+      LOAD_TEST_MAX_ROOMS: ${LOAD_TEST_MAX_ROOMS:-0}
+      LOAD_TEST_MAX_VIEWERS: ${LOAD_TEST_MAX_VIEWERS:-0}
       PUBLIC_URL: https://webzoom.localhost:8443
       OIDC_ISSUER: https://webzoom.localhost:8443/idp/realms/webzoom-local
       OIDC_CLIENT_ID: webzoom

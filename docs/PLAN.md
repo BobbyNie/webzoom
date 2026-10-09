@@ -8,7 +8,8 @@
 - Any authenticated user creates a room. One authorized publisher at a time. Only the owner transfers publishing or ends a room.
 - Single Go instance, in-memory state, React/TypeScript frontend. Restart invalidates rooms and sessions.
 - Docker Compose TLS proxy and OpenShift edge Route; non-root arbitrary UID image.
-- Goal: 5 rooms × 200 viewers, 1080p30 and p95 capture-to-render ≤ 1 second. Degradation is visible and is not a substitute for passing the normal-quality target.
+- Normal deployment has no fixed room or viewer count limits. Positive limits are opt-in for isolated load tests only.
+- Load-test goal: 5 rooms × 200 viewers, 1080p30 and p95 capture-to-render ≤ 1 second. Degradation is visible and is not a substitute for passing the normal-quality target.
 - Room expiry: 8 hours; empty-room expiry: 30 minutes.
 
 ## Delivery gates

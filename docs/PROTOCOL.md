@@ -4,7 +4,7 @@
 
 浏览器通过 Cookie 登录。会议 ID 使用 24 字节随机数的 base64url 编码。
 会议 ID 不承担认证功能。所有会议接口都要求有效登录。
-每场会议最多 201 个连接，即一名共享者和 200 名听众。
+默认不限制会议数量或每场听众人数。正值容量限制只用于压力测试。
 同一用户身份在一场会议中只能有一个连接。
 
 主持人身份固定。只有主持人可以转交共享权或结束会议。
@@ -25,6 +25,7 @@
 | GET | `/auth/callback` | 校验 state、PKCE、签名和 nonce，创建会话 |
 | POST | `/auth/logout` | 删除当前应用会话，关闭相关媒体连接 |
 | GET | `/api/me` | 返回 `user`、`csrf`、`expiresAt` |
+| GET | `/api/rooms` | 当前登录用户创建的有效会议；按创建时间从新到旧排列；空列表返回 `[]` |
 | POST | `/api/rooms` | 创建会议，返回 Snapshot |
 | GET | `/api/rooms/<id>` | 获取 Snapshot |
 | POST | `/api/rooms/<id>/actions` | JSON：`{"action":"start|stop|transfer|end","target":"用户ID"}` |
