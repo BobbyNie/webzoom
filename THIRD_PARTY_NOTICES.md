@@ -7,7 +7,7 @@
 
 | 组件 | 版本 | 许可证 |
 |---|---|---|
-| Go 标准库及运行时 | 1.26.8 | BSD-3-Clause |
+| Go 标准库及运行时 | 1.26.9 | BSD-3-Clause |
 | github.com/coder/websocket | 1.8.15 | ISC |
 | github.com/coreos/go-oidc/v3 | 3.21.0 | Apache-2.0 |
 | github.com/go-jose/go-jose/v4 | 4.1.4 | Apache-2.0 |

@@ -9,4 +9,4 @@ require (
 	golang.org/x/oauth2 v0.37.0 // indirect
 )
 
-toolchain go1.26.8
+toolchain go1.26.9

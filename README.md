@@ -137,7 +137,7 @@ GitHub Actions 对拉取请求执行检查。`main` 分支和 `v*` 标签通过�
 
 ## 开发与验证
 
-必要条件：Go 1.26.8、Node.js 22、npm，以及桌面 Chromium 测试环境。
+必要条件：Go 1.26.9、Node.js 22、npm，以及桌面 Chromium 测试环境。
 依赖安装需要网络或组织内部的软件镜像源。
 
 ```sh

@@ -6,7 +6,7 @@ RUN npm ci
 COPY web/ ./
 RUN npm test && npm run build
 
-FROM golang:1.26.8-bookworm@sha256:dc9ad6c05acc7a88e5b71bde60a5fe3bd4b9f0db209011711b464107438a8107 AS backend
+FROM golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c AS backend
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
