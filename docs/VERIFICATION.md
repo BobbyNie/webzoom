@@ -209,3 +209,22 @@ Docker 编译器镜像固定到已核对的官方多架构镜像摘要。
 以上漏洞检查针对 Go 代码，不替代最终镜像扫描、Keycloak 审查或生产容量验收。
 - 修复镜像通过默认 UID 65532、任意 UID 1001230000 的只读容器测试。
 - 修复镜像通过 HTTPS 代理认证二进制 WSS 测试及 Compose 压测配置测试。
+
+## 2026-10-09：Docker Hub 与自动版本发布
+
+发布目标改为 Docker Hub `bobbynie/webzoom`。
+`main` 首次自动发布 `v0.1.0`，之后递增补丁号。
+Git 标签、Docker 版本标签和 GitHub Release 使用相同版本号。
+发布流程先推送已测试镜像，再创建 Git 标签和 GitHub Release。
+
+- 版本分配和发布保护先观察失败测试，再加入实现。
+- 工作流及发布脚本的 19 项测试通过。
+- Actionlint 1.7.12 和 ShellCheck 0.11.0 检查通过。
+- `git diff --check` 通过。
+- 已发布版本重跑、旧提交、标签冲突、API 失败及摘要格式均有回归测试。
+- 本次没有修改容器运行用户，也没有重启本机会议服务。
+
+提交前的仓库检查未返回 Actions Secrets、变量或 Environment 条目。
+Docker Hub 与 GitHub 的账号关联不能代替镜像推送凭据。
+上述本地测试不证明 Docker Hub 推送或 GitHub Release 已完成。
+实际发布仍需配置 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN` 并通过远程工作流。

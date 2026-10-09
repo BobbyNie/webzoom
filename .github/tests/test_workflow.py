@@ -23,7 +23,7 @@ class ContainerWorkflowTests(unittest.TestCase):
         self.assertEqual(set(publish["needs"]), {"quality", "image"})
         self.assertIn("github.event_name != 'pull_request'", publish["if"])
         self.assertIn("refs/heads/main", publish["if"])
-        self.assertEqual(publish["permissions"], {"contents": "read", "packages": "write"})
+        self.assertEqual(publish["permissions"], {"contents": "write"})
         for name, job in jobs.items():
             if name != "publish":
                 self.assertNotEqual(job.get("permissions", {}).get("packages"), "write")
@@ -40,6 +40,32 @@ class ContainerWorkflowTests(unittest.TestCase):
         self.assertIn("docker push", publish_text)
         self.assertNotIn("docker build", publish_text)
         self.assertFalse(any(step.get("uses", "").startswith("docker/build-push-action@") for step in publish["steps"]))
+
+    def test_docker_hub_credentials_and_release_are_restricted_to_verified_publish(self):
+        workflow = yaml.load((ROOT / ".github/workflows/container.yml").read_text(), Loader=yaml.BaseLoader)
+        publish = workflow["jobs"]["publish"]
+        self.assertEqual(publish["concurrency"], {"group": "webzoom-release", "cancel-in-progress": "false"})
+        self.assertEqual(workflow["concurrency"]["cancel-in-progress"], "${{ github.event_name == 'pull_request' }}")
+        steps = publish["steps"]
+        login = next(step for step in steps if step.get("uses", "").startswith("docker/login-action@"))
+        self.assertEqual(login["with"]["registry"], "docker.io")
+        self.assertEqual(login["with"]["username"], "${{ secrets.DOCKERHUB_USERNAME }}")
+        self.assertEqual(login["with"]["password"], "${{ secrets.DOCKERHUB_TOKEN }}")
+        check = next(i for i, step in enumerate(steps) if "Check Docker Hub credentials" == step.get("name"))
+        plan = next(i for i, step in enumerate(steps) if "release.py plan" in step.get("run", ""))
+        push = next(i for i, step in enumerate(steps) if "docker push" in step.get("run", ""))
+        tag = next(i for i, step in enumerate(steps) if "release.py tag" in step.get("run", ""))
+        create = next(i for i, step in enumerate(steps) if "release.py publish" in step.get("run", ""))
+        self.assertLess(check, plan)
+        self.assertLess(plan, push)
+        self.assertLess(push, tag)
+        self.assertLess(tag, create)
+        all_text = str(workflow)
+        self.assertNotIn("ghcr.io", all_text)
+        for name, job in workflow["jobs"].items():
+            if name != "publish":
+                self.assertNotIn("DOCKERHUB_TOKEN", str(job))
+                self.assertNotEqual(job.get("permissions", {}).get("contents"), "write")
 
 
 if __name__ == "__main__":
