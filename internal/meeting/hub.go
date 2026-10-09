@@ -55,7 +55,7 @@ type room struct {
 }
 type Config struct {
 	Now                  func() time.Time
-	MaxRooms, MaxViewers int
+	MaxRooms, MaxViewers int // Positive values enable load-test limits; zero disables them.
 }
 type Metrics struct{ Ingress, Egress, Dropped, Degraded atomic.Uint64 }
 type Hub struct {
@@ -68,12 +68,6 @@ type Hub struct {
 func New(c Config) *Hub {
 	if c.Now == nil {
 		c.Now = time.Now
-	}
-	if c.MaxRooms <= 0 {
-		c.MaxRooms = 5
-	}
-	if c.MaxViewers <= 0 {
-		c.MaxViewers = 200
 	}
 	return &Hub{rooms: make(map[string]*room), cfg: c}
 }
@@ -88,7 +82,7 @@ func (h *Hub) Create(u User) (Snapshot, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.sweep()
-	if len(h.rooms) >= h.cfg.MaxRooms {
+	if h.cfg.MaxRooms > 0 && len(h.rooms) >= h.cfg.MaxRooms {
 		return Snapshot{}, ErrCapacity
 	}
 	now := h.cfg.Now()
@@ -125,6 +119,26 @@ func (h *Hub) Get(id string) (Snapshot, error) {
 	}
 	return snapshot(r), nil
 }
+
+// Owned returns live meetings created by the authenticated user, newest first.
+func (h *Hub) Owned(ownerID string) []Snapshot {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.sweep()
+	rooms := make([]Snapshot, 0)
+	for _, r := range h.rooms {
+		if r.OwnerID == ownerID {
+			rooms = append(rooms, snapshot(r))
+		}
+	}
+	sort.Slice(rooms, func(i, j int) bool {
+		if rooms[i].CreatedAt.Equal(rooms[j].CreatedAt) {
+			return rooms[i].ID < rooms[j].ID
+		}
+		return rooms[i].CreatedAt.After(rooms[j].CreatedAt)
+	})
+	return rooms
+}
 func (h *Hub) Join(id string, u User, session string) (*Peer, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -135,7 +149,7 @@ func (h *Hub) Join(id string, u User, session string) (*Peer, error) {
 	if r.peers[u.ID] != nil {
 		return nil, ErrConflict
 	}
-	if len(r.peers) >= h.cfg.MaxViewers+1 {
+	if h.cfg.MaxViewers > 0 && len(r.peers) >= h.cfg.MaxViewers+1 {
 		return nil, ErrCapacity
 	}
 	p := &Peer{User: u, SessionID: session, RoomID: id, Events: make(chan Event, 32), Media: media.NewQueue(8, 2<<20), Done: make(chan struct{})}

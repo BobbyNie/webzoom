@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -41,6 +42,19 @@ func secret(name string) (string, error) {
 	}
 	return strings.TrimSpace(string(b)), nil
 }
+
+// loadTestLimit is disabled unless an explicit non-negative limit is configured.
+func loadTestLimit(name string) (int, error) {
+	value := os.Getenv(name)
+	if value == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("%s must be a non-negative integer (0 disables the load-test limit)", name)
+	}
+	return n, nil
+}
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -60,6 +74,19 @@ func main() {
 		slog.Error(e.Error())
 		os.Exit(1)
 	}
+	maxRooms, e := loadTestLimit("LOAD_TEST_MAX_ROOMS")
+	if e != nil {
+		slog.Error(e.Error())
+		os.Exit(1)
+	}
+	maxViewers, e := loadTestLimit("LOAD_TEST_MAX_VIEWERS")
+	if e != nil {
+		slog.Error(e.Error())
+		os.Exit(1)
+	}
+	if maxRooms > 0 || maxViewers > 0 {
+		slog.Warn("load-test capacity limits enabled; do not use for normal deployment", "rooms", maxRooms, "viewers", maxViewers)
+	}
 	startup, stop := context.WithTimeout(ctx, 20*time.Second)
 	manager, e := auth.New(startup, auth.Config{PublicURL: os.Getenv("PUBLIC_URL"), Issuer: issuer, ClientID: os.Getenv("OIDC_CLIENT_ID"), ClientSecret: clientSecret})
 	stop()
@@ -67,7 +94,7 @@ func main() {
 		slog.Error("OIDC initialization failed; check issuer, TLS trust and client configuration", "error", e)
 		os.Exit(1)
 	}
-	hub := meeting.New(meeting.Config{})
+	hub := meeting.New(meeting.Config{MaxRooms: maxRooms, MaxViewers: maxViewers})
 	handler := server.New(server.Config{Auth: manager, Hub: hub, StaticDir: env("STATIC_DIR", "web/dist"), MetricsToken: metricsToken})
 	srv := &http.Server{Addr: env("LISTEN_ADDR", ":8080"), Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	go func() {

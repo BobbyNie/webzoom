@@ -33,3 +33,24 @@ func TestSecretFilesAndConflicts(t *testing.T) {
 		t.Fatal("missing secret file accepted")
 	}
 }
+
+func TestLoadTestLimitsDefaultDisabledAndValidate(t *testing.T) {
+	for _, key := range []string{"LOAD_TEST_MAX_ROOMS", "LOAD_TEST_MAX_VIEWERS"} {
+		for _, tc := range []struct {
+			value string
+			want  int
+			bad   bool
+		}{
+			{"", 0, false}, {"0", 0, false}, {"5", 5, false}, {"200", 200, false},
+			{"-1", 0, true}, {"abc", 0, true}, {"1.5", 0, true}, {"99999999999999999999999999", 0, true},
+		} {
+			t.Run(key+"/"+tc.value, func(t *testing.T) {
+				t.Setenv(key, tc.value)
+				got, err := loadTestLimit(key)
+				if (err != nil) != tc.bad || got != tc.want {
+					t.Fatalf("got %d, %v", got, err)
+				}
+			})
+		}
+	}
+}

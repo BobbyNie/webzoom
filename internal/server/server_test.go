@@ -200,3 +200,63 @@ func TestMetricsExposeActualQuality(t *testing.T) {
 		t.Fatal(string(b))
 	}
 }
+
+func TestOwnedMeetingsAPIAuthenticationIsolationAndEnd(t *testing.T) {
+	ts, authManager, hub := testApp(t)
+	alice, _ := authManager.NewSession(meeting.User{ID: "alice"}, time.Now().Add(time.Hour))
+	bob, _ := authManager.NewSession(meeting.User{ID: "bob"}, time.Now().Add(time.Hour))
+	own, _ := hub.Create(alice.User)
+	hub.Create(bob.User)
+	for _, session := range []*auth.Session{nil, {ID: "invalid"}} {
+		res := do(t, ts, session, "GET", "/api/rooms", "", ts.URL)
+		res.Body.Close()
+		if res.StatusCode != 401 {
+			t.Fatal("anonymous list", res.StatusCode)
+		}
+	}
+	res := do(t, ts, alice, "GET", "/api/rooms?ownerId=bob", "", ts.URL)
+	var rooms []meeting.Snapshot
+	err := json.NewDecoder(res.Body).Decode(&rooms)
+	res.Body.Close()
+	if res.StatusCode != 200 || err != nil || len(rooms) != 1 || rooms[0].ID != own.ID {
+		t.Fatal("list leaked or missing", res.StatusCode, err, rooms)
+	}
+	path := "/api/rooms/" + own.ID + "/actions"
+	for _, attempt := range []struct {
+		s      *auth.Session
+		origin string
+	}{{bob, ts.URL}, {alice, "https://evil.example"}} {
+		res = do(t, ts, attempt.s, "POST", path, `{"action":"end"}`, attempt.origin)
+		res.Body.Close()
+		if res.StatusCode != 403 {
+			t.Fatal("unauthorized end", res.StatusCode)
+		}
+	}
+	noCSRF := *alice
+	noCSRF.CSRF = "wrong"
+	res = do(t, ts, &noCSRF, "POST", path, `{"action":"end"}`, ts.URL)
+	res.Body.Close()
+	if res.StatusCode != 403 {
+		t.Fatal("missing CSRF protection", res.StatusCode)
+	}
+	res = do(t, ts, alice, "POST", path, `{"action":"end"}`, ts.URL)
+	res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatal("owner cannot end without joining", res.StatusCode)
+	}
+	res = do(t, ts, alice, "GET", "/api/rooms", "", ts.URL)
+	b, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != 200 || strings.TrimSpace(string(b)) != "[]" {
+		t.Fatal(string(b))
+	}
+	if _, err = hub.Get(own.ID); err != meeting.ErrNotFound {
+		t.Fatal("ended link still usable", err)
+	}
+	authManager.Delete(alice.ID)
+	res = do(t, ts, alice, "GET", "/api/rooms", "", ts.URL)
+	res.Body.Close()
+	if res.StatusCode != 401 {
+		t.Fatal("expired session can list", res.StatusCode)
+	}
+}

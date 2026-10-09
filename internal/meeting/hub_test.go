@@ -1,6 +1,7 @@
 package meeting
 
 import (
+	"fmt"
 	"testing"
 	"time"
 	"webzoom/internal/media"
@@ -197,5 +198,109 @@ func TestSlowViewerDoesNotBlockFastViewer(t *testing.T) {
 	}
 	if h.Metrics.Dropped.Load() == 0 {
 		t.Fatal("slow viewer did not drop frames")
+	}
+}
+
+func TestOwnedMeetingsOnlyLiveOwnedSnapshots(t *testing.T) {
+	now := time.Now()
+	h := New(Config{Now: func() time.Time { return now }})
+	if got := h.Owned(owner.ID); got == nil || len(got) != 0 {
+		t.Fatal("empty list must be non-nil", got)
+	}
+	first, _ := h.Create(owner)
+	now = now.Add(time.Minute)
+	second, _ := h.Create(owner)
+	other, _ := h.Create(viewer)
+	p, _ := h.Join(second.ID, owner, "s")
+	h.Join(second.ID, viewer, "v")
+	h.Action(second.ID, owner.ID, "transfer", viewer.ID)
+	got := h.Owned(owner.ID)
+	if len(got) != 2 || got[0].ID != second.ID || got[1].ID != first.ID || len(got[0].Participants) != 2 {
+		t.Fatal(got)
+	}
+	if v := h.Owned(viewer.ID); len(v) != 1 || v[0].ID != other.ID {
+		t.Fatal("transfer changed ownership", v)
+	}
+	got[0].Participants[0].Name = "mutated"
+	if h.Owned(owner.ID)[0].Participants[0].Name == "mutated" {
+		t.Fatal("list aliases hub state")
+	}
+	h.Action(first.ID, owner.ID, "end", "")
+	if got = h.Owned(owner.ID); len(got) != 1 {
+		t.Fatal("ended meeting still listed", got)
+	}
+	h.Leave(p)
+	now = now.Add(8 * time.Hour)
+	if got = h.Owned(owner.ID); len(got) != 0 {
+		t.Fatal("expired meeting still listed", got)
+	}
+}
+
+func TestEmptyMeetingsConsumeCapacityUntilEndedOrExpired(t *testing.T) {
+	now := time.Now()
+	h := New(Config{Now: func() time.Time { return now }, MaxRooms: 1})
+	room, _ := h.Create(owner)
+	p, _ := h.Join(room.ID, owner, "s")
+	h.Leave(p)
+	if _, err := h.Create(owner); err != ErrCapacity {
+		t.Fatal("empty meeting must retain its link and slot", err)
+	}
+	if len(h.Owned(owner.ID)) != 1 {
+		t.Fatal("owner cannot find retained meeting")
+	}
+	if _, err := h.Action(room.ID, viewer.ID, "end", ""); err != ErrForbidden {
+		t.Fatal(err)
+	}
+	h.Action(room.ID, owner.ID, "end", "")
+	if _, err := h.Create(owner); err != nil {
+		t.Fatal("ending meeting did not free capacity", err)
+	}
+	now = now.Add(30 * time.Minute)
+	if len(h.Owned(owner.ID)) != 0 {
+		t.Fatal("empty expired meeting still listed")
+	}
+	if _, err := h.Create(owner); err != nil {
+		t.Fatal("expiry did not free capacity", err)
+	}
+}
+
+func TestDefaultCapacityHasNoRoomOrViewerLimit(t *testing.T) {
+	h := New(Config{})
+	var first Snapshot
+	for i := 0; i < 12; i++ {
+		r, err := h.Create(owner)
+		if err != nil {
+			t.Fatalf("default room %d rejected: %v", i, err)
+		}
+		if i == 0 {
+			first = r
+		}
+	}
+	if _, err := h.Join(first.ID, owner, "host"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 220; i++ {
+		id := fmt.Sprintf("viewer-%d", i)
+		if _, err := h.Join(first.ID, User{ID: id, Name: id}, id); err != nil {
+			t.Fatalf("default viewer %d rejected: %v", i, err)
+		}
+	}
+	// Limits remain independently opt-in for load tests.
+	roomsOnly := New(Config{MaxRooms: 1})
+	r, _ := roomsOnly.Create(owner)
+	for i := 0; i < 220; i++ {
+		id := fmt.Sprintf("viewer-%d", i)
+		if _, err := roomsOnly.Join(r.ID, User{ID: id}, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := roomsOnly.Create(owner); err != ErrCapacity {
+		t.Fatal("explicit room limit not enforced", err)
+	}
+	viewersOnly := New(Config{MaxViewers: 1})
+	for i := 0; i < 12; i++ {
+		if _, err := viewersOnly.Create(owner); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

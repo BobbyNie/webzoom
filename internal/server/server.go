@@ -41,6 +41,9 @@ func New(c Config) http.Handler {
 	mux.HandleFunc("GET /api/me", a.secure(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		reply(w, 200, map[string]any{"user": s.User, "csrf": s.CSRF, "expiresAt": s.ExpiresAt})
 	}))
+	mux.HandleFunc("GET /api/rooms", a.secure(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
+		reply(w, 200, a.Hub.Owned(s.User.ID))
+	}))
 	mux.HandleFunc("POST /api/rooms", a.secure(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		room, e := a.Hub.Create(s.User)
 		if e != nil {
