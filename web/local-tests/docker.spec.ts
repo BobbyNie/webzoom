@@ -1,4 +1,5 @@
 import {test, expect, type Page} from '@playwright/test';
+import {trackCreatedMeetings} from './support/meeting-cleanup';
 
 async function login(page: Page, username: string) {
   await page.goto('/');
@@ -39,6 +40,7 @@ test('real Keycloak login and Docker WSS share, transfer and stop', async ({brow
   const hostContext = await browser.newContext(options);
   const viewerContext = await browser.newContext(options);
   const host = await hostContext.newPage(), viewer = await viewerContext.newPage();
+  const cleanup = await trackCreatedMeetings(host);
   const errors: string[] = [], urls: string[] = [], sockets: string[] = [];
   for (const page of [host, viewer]) {
     page.on('pageerror', e => errors.push(e.message));
@@ -81,19 +83,22 @@ test('real Keycloak login and Docker WSS share, transfer and stop', async ({brow
     expect(urls.every(u => u.startsWith('https://webzoom.localhost:8443/'))).toBe(true);
     console.log(JSON.stringify({realKeycloak: true, dockerProxy: true, decodedFrames: true, audio: false, requests: urls.length, sockets: sockets.length}));
   } finally {
-    await hostContext.close(); await viewerContext.close();
+    try {await cleanup();} finally {await hostContext.close(); await viewerContext.close();}
   }
 });
 
 test('anonymous access is denied and browser capture cancellation stays idle', async ({page}) => {
-  const response = await page.request.get('/api/me');
-  expect(response.status()).toBe(401);
-  await page.addInitScript(() => {
-    navigator.mediaDevices.getDisplayMedia = async () => {throw new DOMException('cancelled', 'NotAllowedError');};
-  });
-  await login(page, 'alice');
-  await page.getByRole('button', {name: '创建会议', exact: true}).click();
-  await page.getByRole('button', {name: '共享屏幕', exact: true}).click();
-  await expect(page.getByRole('alert')).toContainText('授权已取消');
-  await expect(page.getByTestId('share-state')).toHaveText('等待共享');
+  const cleanup = await trackCreatedMeetings(page);
+  try {
+    const response = await page.request.get('/api/me');
+    expect(response.status()).toBe(401);
+    await page.addInitScript(() => {
+      navigator.mediaDevices.getDisplayMedia = async () => {throw new DOMException('cancelled', 'NotAllowedError');};
+    });
+    await login(page, 'alice');
+    await page.getByRole('button', {name: '创建会议', exact: true}).click();
+    await page.getByRole('button', {name: '共享屏幕', exact: true}).click();
+    await expect(page.getByRole('alert')).toContainText('授权已取消');
+    await expect(page.getByTestId('share-state')).toHaveText('等待共享');
+  } finally {await cleanup();}
 });
