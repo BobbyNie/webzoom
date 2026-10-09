@@ -6,3 +6,22 @@
 .stage-panel:fullscreen .screen-stage{width:100%;height:100%;max-height:none;aspect-ratio:auto;background:#000}
 .stage-panel:fullscreen .stage-bottom{position:absolute;inset:auto 0 0;height:40px;background:#10221fe6;z-index:1}
 .stage-panel:fullscreen .icon-button{color:#fff}
+
+.my-meetings { margin-top: 40px; }
+.my-meetings-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.my-meetings-heading h2 { margin: 6px 0; }
+.owned-meetings-list { display: grid; gap: 16px; margin-top: 20px; }
+.owned-meeting { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 24px; background: #fff; border: 1px solid var(--line, #dde4e1); border-radius: 16px; }
+.owned-meeting h3 { margin: 0 0 8px; font-size: 18px; }
+.owned-meeting h3 span { font-family: monospace; }
+.meeting-status { color: #61736e; margin: 8px 0; font-size: 14px; }
+.meeting-status.live { color: #007b65; }
+.meeting-dates { color: #61736e; font-size: 13px; line-height: 1.8; margin: 0; }
+.meeting-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.meetings-empty { border: 1px dashed #cbd8d2; padding: 32px; border-radius: 16px; color: #61736e; }
+@media (max-width: 760px) {
+  .owned-meeting { align-items: stretch; flex-direction: column; }
+  .meeting-actions { justify-content: flex-start; }
+}
+.meeting-end-dialog { border: 0; max-width: calc(100vw - 32px); }
+.meeting-end-dialog::backdrop { background: rgb(12 28 25 / 55%); }
