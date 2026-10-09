@@ -8,7 +8,7 @@
 
 1. 拉取请求执行 Go、前端、浏览器、工作流和容器测试，不发布镜像。
 2. 推送到 `main` 或推送 `v*` 标签执行相同检查。
-3. 所有检查成功后，发布任务检查 Docker Hub 凭据。
+3. 所有检查成功后，发布任务进入 `DOCKERHUB_USERNAME` 环境，并检查 Docker Hub 凭据。
 4. 发布任务下载本次运行中已经测试的镜像。
 5. 发布任务校验镜像 ID 和默认用户。
 6. 发布任务计算版本，并向 Docker Hub 推送同一镜像的标签。
@@ -61,13 +61,17 @@ Docker Hub 与 GitHub 的账号关联用于源码访问。它不能代替 Action
 1. 在 Docker Hub 确认目标仓库 `bobbynie/webzoom` 已建立。
 2. 在 Docker Hub 账号设置创建 Personal Access Token（PAT，个人访问令牌）。
 3. 给该令牌镜像读取和写入权限。发布流程不需要删除权限。
-4. 打开 GitHub 仓库的 `Settings → Secrets and variables → Actions`。
-5. 新建仓库 Secret `DOCKERHUB_USERNAME`，值为 `bobbynie`。
-6. 新建仓库 Secret `DOCKERHUB_TOKEN`，值为 Docker Hub PAT。
+4. 打开 GitHub 仓库的 `Settings → Environments → DOCKERHUB_USERNAME`。若环境不存在，先创建该环境。
+5. 新建环境 Secret `DOCKERHUB_USERNAME`，值为 `bobbynie`。
+6. 新建环境 Secret `DOCKERHUB_TOKEN`，值为 Docker Hub PAT。
 7. 对当前 `main` 手动运行工作流，或重跑失败的发布任务。
 
 缺少凭据或用户名不匹配时，发布任务明确失败，不创建 Git 标签或 Release。
-此工作流使用仓库 Actions Secrets，不使用未声明的 Environment Secrets。
+此仓库已在名为 `DOCKERHUB_USERNAME` 的环境中配置这两个 Secret。
+发布任务显式声明该环境。环境名称不是 Docker Hub 用户名的实际值。
+已有仓库级同名 Actions Secrets 也可以使用；环境级同名 Secret 优先。
+Go、浏览器和镜像构建任务不进入该环境，不读取这两个 Secret。
+若环境配置了审批或分支规则，发布任务必须满足这些规则。
 
 工作流的默认权限只有 `contents: read`。
 只有发布任务拥有 `contents: write`，用于创建 Git 标签和 GitHub Release。

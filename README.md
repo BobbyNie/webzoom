@@ -133,7 +133,8 @@ GitHub Actions 对拉取请求执行检查。`main` 分支通过检查后，自�
 发布到 Docker Hub `bobbynie/webzoom`，并创建对应的 GitHub Release。
 首次自动版本为 `v0.1.0`。后续自动版本递增补丁号。也支持手动稳定版本标签。
 首次发布架构为 `linux/amd64`。发布任务使用已经通过容器测试的同一个镜像，不重新构建。
-仓库需要配置 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN` 两个 Actions Secret。
+发布任务使用名为 `DOCKERHUB_USERNAME` 的 GitHub Environment。
+在该环境中配置 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN` 两个 Secret。
 Docker Hub 与 GitHub 的账号关联不能代替这两个发布凭据。
 镜像默认使用 `65532:65532`，并支持 OpenShift 分配的任意非 root UID。
 发布标签、访问权限和部署步骤见 [CI 说明](docs/CI.md)。

@@ -104,6 +104,7 @@ jobs:
 
   publish:
     name: Publish Docker Hub image and GitHub Release
+    environment: DOCKERHUB_USERNAME
     needs: [quality, image]
     if: >-
       github.event_name != 'pull_request' &&
@@ -130,7 +131,7 @@ jobs:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           if [[ "$DOCKERHUB_USERNAME" != 'bobbynie' || -z "$DOCKERHUB_TOKEN" ]]; then
-            echo '::error::Configure DOCKERHUB_USERNAME=bobbynie and a write-enabled DOCKERHUB_TOKEN in repository Actions secrets.'
+            echo '::error::Configure DOCKERHUB_USERNAME=bobbynie and a write-enabled DOCKERHUB_TOKEN in the DOCKERHUB_USERNAME environment secrets or repository Actions secrets.'
             exit 1
           fi
       - name: Retrieve this run's tested image

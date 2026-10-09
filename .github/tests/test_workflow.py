@@ -41,6 +41,13 @@ class ContainerWorkflowTests(unittest.TestCase):
         self.assertNotIn("docker build", publish_text)
         self.assertFalse(any(step.get("uses", "").startswith("docker/build-push-action@") for step in publish["steps"]))
 
+    def test_only_publish_job_can_access_configured_docker_hub_environment(self):
+        workflow = yaml.load((ROOT / ".github/workflows/container.yml").read_text(), Loader=yaml.BaseLoader)
+        self.assertEqual(workflow["jobs"]["publish"].get("environment"), "DOCKERHUB_USERNAME")
+        for name, job in workflow["jobs"].items():
+            if name != "publish":
+                self.assertNotIn("environment", job)
+
     def test_docker_hub_credentials_and_release_are_restricted_to_verified_publish(self):
         workflow = yaml.load((ROOT / ".github/workflows/container.yml").read_text(), Loader=yaml.BaseLoader)
         publish = workflow["jobs"]["publish"]

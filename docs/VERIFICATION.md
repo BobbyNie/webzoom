@@ -228,3 +228,17 @@ Git 标签、Docker 版本标签和 GitHub Release 使用相同版本号。
 Docker Hub 与 GitHub 的账号关联不能代替镜像推送凭据。
 上述本地测试不证明 Docker Hub 推送或 GitHub Release 已完成。
 实际发布仍需配置 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN` 并通过远程工作流。
+
+## 2026-10-09：发布环境凭据绑定
+
+用户已在 GitHub Environment `DOCKERHUB_USERNAME` 中保存两个 Docker Hub Secret。
+仓库级 Secrets 列表为空。此前任务没有声明该环境，导致凭据检查失败。
+检查过程仅读取 Secret 名称和环境规则，没有读取令牌值。
+
+- 先加入环境访问回归测试，并观察发布任务未绑定环境时失败。
+- 发布任务显式使用已有 `DOCKERHUB_USERNAME` 环境。
+- Go、浏览器和镜像构建任务不访问发布环境。
+- 本地 20 项工作流与发布测试通过。
+
+前一次远程运行的质量检查、Chromium 测试和非 root 容器测试通过。
+本次修复仍需通过远程流程，才能确认凭据有效和实际发布成功。
