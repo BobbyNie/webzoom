@@ -38,6 +38,21 @@ func New(c Config) http.Handler {
 		a.Auth.ClearCookie(w)
 		w.WriteHeader(204)
 	}))
+	mux.HandleFunc("POST /auth/refresh", a.secure(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
+		renewed, err := a.Auth.Renew(r.Context(), s.ID)
+		if errors.Is(err, auth.ErrExpired) {
+			a.Hub.RevokeSession(s.ID)
+			a.Auth.ClearCookie(w)
+			http.Error(w, "authentication required", 401)
+			return
+		}
+		if err != nil {
+			http.Error(w, "identity provider temporarily unavailable", 503)
+			return
+		}
+		a.Auth.SetSessionCookie(w, renewed)
+		reply(w, 200, map[string]any{"user": renewed.User, "csrf": renewed.CSRF, "expiresAt": renewed.ExpiresAt})
+	}))
 	mux.HandleFunc("GET /api/me", a.secure(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		reply(w, 200, map[string]any{"user": s.User, "csrf": s.CSRF, "expiresAt": s.ExpiresAt})
 	}))
@@ -236,6 +251,10 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		case <-ctx.Done():
 			return
 		case <-expiry.C:
+			if current, ok := a.Auth.ByID(s.ID); ok {
+				expiry.Reset(time.Until(current.ExpiresAt))
+				continue
+			}
 			a.Hub.RevokeSession(s.ID)
 			conn.Close(websocket.StatusPolicyViolation, "session expired")
 			return

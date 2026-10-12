@@ -243,3 +243,8 @@ func (m *Manager) CheckMutation(r *http.Request, s *Session) bool {
 func (m *Manager) Origin() string                    { return m.origin }
 func (m *Manager) Delete(id string)                  { m.mu.Lock(); defer m.mu.Unlock(); delete(m.sessions, id) }
 func (m *Manager) ClearCookie(w http.ResponseWriter) { cookie(w, SessionCookie, "", time.Unix(0, 0)) }
+
+// SetSessionCookie updates the browser deadline after a validated refresh.
+func (m *Manager) SetSessionCookie(w http.ResponseWriter, s *Session) {
+	cookie(w, SessionCookie, s.ID, s.ExpiresAt)
+}

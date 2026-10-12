@@ -260,3 +260,47 @@ func TestOwnedMeetingsAPIAuthenticationIsolationAndEnd(t *testing.T) {
 		t.Fatal("expired session can list", res.StatusCode)
 	}
 }
+
+func TestRefreshEndpointRequiresSessionOriginAndCSRF(t *testing.T) {
+	ts, a, _ := testApp(t)
+	s, _ := a.NewSession(meeting.User{ID: "alice"}, time.Now().Add(time.Hour))
+	for _, tc := range []struct {
+		name    string
+		session *auth.Session
+		origin  string
+		status  int
+	}{
+		{"anonymous", nil, ts.URL, 401},
+		{"expired", &auth.Session{ID: "missing"}, ts.URL, 401},
+		{"cross-site", s, "https://evil.example", 403},
+		{"bad-csrf", &auth.Session{ID: s.ID, CSRF: "wrong"}, ts.URL, 403},
+		{"active", s, ts.URL, 200},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := do(t, ts, tc.session, "POST", "/auth/refresh", "{}", tc.origin)
+			defer res.Body.Close()
+			if res.StatusCode != tc.status {
+				t.Fatalf("status=%d want=%d", res.StatusCode, tc.status)
+			}
+			if tc.status == 200 {
+				var v struct {
+					ExpiresAt time.Time `json:"expiresAt"`
+					CSRF      string    `json:"csrf"`
+				}
+				if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
+					t.Fatal(err)
+				}
+				if !v.ExpiresAt.Equal(s.ExpiresAt) || v.CSRF != s.CSRF {
+					t.Fatal("wrong session snapshot")
+				}
+				cookies := res.Cookies()
+				if len(cookies) != 1 || cookies[0].Name != auth.SessionCookie || cookies[0].Value != s.ID || !cookies[0].Secure || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteLaxMode || cookies[0].MaxAge <= 0 {
+					t.Fatal("unsafe renewed cookie")
+				}
+				if res.Header.Get("Cache-Control") != "no-store" {
+					t.Fatal("cacheable session")
+				}
+			}
+		})
+	}
+}
