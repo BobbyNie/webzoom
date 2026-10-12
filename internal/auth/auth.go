@@ -34,7 +34,7 @@ type pendingLogin struct {
 }
 type Manager struct {
 	mu       sync.Mutex
-	sessions map[string]*Session
+	sessions map[string]*sessionState
 	pending  map[string]pendingLogin
 	origin   string
 	oauth    oauth2.Config
@@ -43,7 +43,7 @@ type Manager struct {
 }
 
 func NewStore(origin string) *Manager {
-	return &Manager{sessions: map[string]*Session{}, pending: map[string]pendingLogin{}, origin: origin}
+	return &Manager{sessions: map[string]*sessionState{}, pending: map[string]pendingLogin{}, origin: origin}
 }
 func New(ctx context.Context, c Config) (*Manager, error) {
 	u, e := url.Parse(c.PublicURL)
@@ -194,6 +194,10 @@ func (m *Manager) Callback(w http.ResponseWriter, r *http.Request) {
 	if old, e := r.Cookie(SessionCookie); e == nil {
 		m.Delete(old.Value)
 	}
+	m.mu.Lock()
+	m.sessions[s.ID].token = tok
+	m.sessions[s.ID].nonce = p.Nonce
+	m.mu.Unlock()
 	cookie(w, SessionCookie, s.ID, s.ExpiresAt)
 	http.Redirect(w, r, p.Next, 302)
 }
@@ -209,7 +213,7 @@ func (m *Manager) NewSession(u meeting.User, expiry time.Time) (*Session, error)
 		return nil, errors.New("session capacity reached")
 	}
 	s := &Session{ID: randomToken(), CSRF: randomToken(), User: u, ExpiresAt: expiry}
-	m.sessions[s.ID] = s
+	m.sessions[s.ID] = &sessionState{Session: *s, maxExpiry: time.Now().Add(8 * time.Hour)}
 	return s, nil
 }
 func (m *Manager) Session(r *http.Request) (*Session, bool) {
@@ -230,7 +234,8 @@ func (m *Manager) ByID(id string) (*Session, bool) {
 		delete(m.sessions, id)
 		return nil, false
 	}
-	return s, true
+	snapshot := s.Session
+	return &snapshot, true
 }
 func (m *Manager) CheckMutation(r *http.Request, s *Session) bool {
 	return r.Header.Get("Origin") == m.origin && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(s.CSRF)) == 1
