@@ -1,0 +1,1161 @@
+{
+  "schema_version": 1,
+  "audit_date": "2026-10-12",
+  "scope_note": "Package-presence findings, not proof of exploitability. Raw reports are retained locally under artifacts/security. This snapshot does not attest to the currently running old containers.",
+  "scanner": {
+    "name": "Trivy",
+    "version": "0.75.0",
+    "database": {
+      "Version": 2,
+      "NextUpdate": "2026-10-13T13:18:23.16392058Z",
+      "UpdatedAt": "2026-10-12T13:18:23.1639207Z",
+      "DownloadedAt": "2026-10-12T14:48:57.88778Z"
+    },
+    "excluded_severities": [],
+    "ignore_unfixed": false
+  },
+  "maintained_images": [
+    {
+      "raw_report": "after/application.json",
+      "raw_report_sha256": "3804dc787598d91b7935a30dd99672b5074582b77eb9268cc03e46b62229ecb1",
+      "scanned_at": "2026-10-12T23:24:50.169639+08:00",
+      "image": "webzoom:local",
+      "image_id": "sha256:0efee6130972dfa285cdbfe80f7c4f1abb7815ddfa255187ea3cbaa34d176b1d",
+      "architecture": "arm64",
+      "finding_records": 0,
+      "unique_ids": 0
+    },
+    {
+      "raw_report": "after/frontend-builder.json",
+      "raw_report_sha256": "a4dff9b46128b58485cde94d6e53f1324f1a00c01efc8e1251b21a291062742a",
+      "scanned_at": "2026-10-12T23:24:50.288045+08:00",
+      "image": "webzoom:frontend",
+      "image_id": "sha256:bb6ad18690871ba812ec6bc576f208ba5cb9c6c652afb2ca6226f4198e5fefcb",
+      "architecture": "arm64",
+      "finding_records": 0,
+      "unique_ids": 0
+    },
+    {
+      "raw_report": "after/backend-builder.json",
+      "raw_report_sha256": "0875be6c50a909afdbcac195d7d3fd9c4808bbb99cf709002d449ac2daad2614",
+      "scanned_at": "2026-10-12T23:24:50.44156+08:00",
+      "image": "webzoom:backend",
+      "image_id": "sha256:4f194d490f8d2d77b7b1c89dffd702726e224f78dd892fa5546664e507f83255",
+      "architecture": "arm64",
+      "finding_records": 0,
+      "unique_ids": 0
+    },
+    {
+      "raw_report": "after/proxy.json",
+      "raw_report_sha256": "7fc2c65bd5bed9ea40caddbec554155b35e1abdd88972366a4091d31c0e60dcb",
+      "scanned_at": "2026-10-12T23:24:50.55853+08:00",
+      "image": "webzoom-proxy:local",
+      "image_id": "sha256:743e54d75b498d275a43a6e13561bb8df05aba7eb9663e6047678770622af6ea",
+      "architecture": "arm64",
+      "finding_records": 0,
+      "unique_ids": 0
+    }
+  ],
+  "old_running_application": {
+    "snapshot": {
+      "raw_report": "app-running-before.json",
+      "raw_report_sha256": "1a05d0019fa6c9176bdc9a0338090ee4d1d680d0d8c2e3724daffe3e6dc30e2e",
+      "scanned_at": "2026-10-12T22:50:09.675058+08:00",
+      "image": "webzoom:local-demo",
+      "image_id": "sha256:909631fa5d6d38c00b0b3db6d2e3b618807685d05ec8c81cf2bdd7784ad5e914",
+      "architecture": "arm64",
+      "finding_records": 13,
+      "unique_ids": 13
+    },
+    "findings": [
+      {
+        "id": "CVE-2026-56857",
+        "severity": "LOW",
+        "severity_source": null,
+        "status": "fixed",
+        "affected_packages": [
+          {
+            "name": "stdlib",
+            "installed_version": "v1.26.8"
+          }
+        ],
+        "fixed_versions": [
+          "1.26.9, 1.27.2"
+        ],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-56857",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-56857"
+        ]
+      },
+      {
+        "id": "CVE-2026-56866",
+        "severity": "MEDIUM",
+        "severity_source": null,
+        "status": "fixed",
+        "affected_packages": [
+          {
+            "name": "stdlib",
+            "installed_version": "v1.26.8"
+          }
+        ],
+        "fixed_versions": [
+          "1.26.9, 1.27.2"
+        ],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-56866",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-56866"
+        ]
+      },
+      {
+        "id": "CVE-2026-78659",
+        "severity": "UNKNOWN",
+        "severity_source": null,
+        "status": "fixed",
+        "affected_packages": [
+          {
+            "name": "stdlib",
+            "installed_version": "v1.26.8"
+          }
+        ],
+        "fixed_versions": [
+          "1.26.9, 1.27.2"
+        ],
+        "references": []
+      },
+      {
+        "id": "CVE-2026-78660",
+        "severity": "UNKNOWN",
+        "severity_source": null,
+        "status": "fixed",
+        "affected_packages": [
+          {
+            "name": "stdlib",
+            "installed_version": "v1.26.8"
+          }
+        ],
+        "fixed_versions": [
+          "1.26.9, 1.27.2"
+        ],
+        "references": []
+      },
+      {
+        "id": "CVE-2026-78663",
+        "severity": "MEDIUM",
+        "severity_source": null,
+        "status": "fixed",
+        "affected_packages": [
+          {
+            "name": "stdlib",
+            "installed_version": "v1.26.8"
+          }
+        ],
+        "fixed_versions": [
+          "1.26.9, 1.27.2"
+        ],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-78663",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-78663"
+        ]
+      },
+      {
+        "id": "CVE-2026-78667",
+        "severity": "HIGH",
+        "severity_source": null,
+        "status": "fixed",
+        "affected_packages": [
+          {
+            "name": "stdlib",
+            "installed_version": "v1.26.8"
+          }
+        ],
+        "fixed_versions": [
+          "1.26.9, 1.27.2"
+        ],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-78667",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-78667"
+        ]
+      },
+      {
+        "id": "CVE-2026-78669",
+        "severity": "HIGH",
+        "severity_source": null,
+        "status": "fixed",
+        "affected_packages": [
+          {
+            "name": "stdlib",
+            "installed_version": "v1.26.8"
+          }
+        ],
+        "fixed_versions": [
+          "1.26.9, 1.27.2"
+        ],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-78669",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-78669"
+        ]
+      },
+      {
+        "id": "CVE-2026-94439",
+        "severity": "MEDIUM",
+        "severity_source": null,
+        "status": "fixed",
+        "affected_packages": [
+          {
+            "name": "stdlib",
+            "installed_version": "v1.26.8"
+          }
+        ],
+        "fixed_versions": [
+          "1.26.9, 1.27.2"
+        ],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-94439",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-94439"
+        ]
+      },
+      {
+        "id": "CVE-2026-94440",
+        "severity": "UNKNOWN",
+        "severity_source": null,
+        "status": "fixed",
+        "affected_packages": [
+          {
+            "name": "stdlib",
+            "installed_version": "v1.26.8"
+          }
+        ],
+        "fixed_versions": [
+          "1.26.9, 1.27.2"
+        ],
+        "references": []
+      },
+      {
+        "id": "CVE-2026-94448",
+        "severity": "MEDIUM",
+        "severity_source": null,
+        "status": "fixed",
+        "affected_packages": [
+          {
+            "name": "stdlib",
+            "installed_version": "v1.26.8"
+          }
+        ],
+        "fixed_versions": [
+          "1.26.9, 1.27.2"
+        ],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-94448",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-94448"
+        ]
+      },
+      {
+        "id": "CVE-2026-97030",
+        "severity": "UNKNOWN",
+        "severity_source": null,
+        "status": "fixed",
+        "affected_packages": [
+          {
+            "name": "stdlib",
+            "installed_version": "v1.26.8"
+          }
+        ],
+        "fixed_versions": [
+          "1.26.9, 1.27.2"
+        ],
+        "references": []
+      },
+      {
+        "id": "CVE-2026-97031",
+        "severity": "HIGH",
+        "severity_source": null,
+        "status": "fixed",
+        "affected_packages": [
+          {
+            "name": "stdlib",
+            "installed_version": "v1.26.8"
+          }
+        ],
+        "fixed_versions": [
+          "1.26.9, 1.27.2"
+        ],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-97031",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-97031"
+        ]
+      },
+      {
+        "id": "CVE-2026-97032",
+        "severity": "MEDIUM",
+        "severity_source": null,
+        "status": "fixed",
+        "affected_packages": [
+          {
+            "name": "stdlib",
+            "installed_version": "v1.26.8"
+          }
+        ],
+        "fixed_versions": [
+          "1.26.9, 1.27.2"
+        ],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-97032",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-97032"
+        ]
+      }
+    ]
+  },
+  "original_proxy": {
+    "snapshot": {
+      "raw_report": "proxy-before.json",
+      "raw_report_sha256": "93b7a66cfa474f69ac8bd4d0fd5f850e5498626f3a61f88267dca1c01a944d54",
+      "scanned_at": "2026-10-12T22:50:08.615886+08:00",
+      "image": "nginxinc/nginx-unprivileged:stable-alpine@sha256:15c994d10d6d78658721c3bcafff14cb281fba2a4bdf9d5ba92c416a472516e3",
+      "image_id": "sha256:1d8171baa86a607971182e96563f06667b683d900eba9f799d3b818eee336c21",
+      "architecture": "arm64",
+      "finding_records": 2,
+      "unique_ids": 2
+    },
+    "findings": [
+      {
+        "id": "CVE-2026-4775",
+        "severity": "HIGH",
+        "severity_source": null,
+        "status": "fixed",
+        "affected_packages": [
+          {
+            "name": "tiff",
+            "installed_version": "4.7.1-r0"
+          }
+        ],
+        "fixed_versions": [
+          "4.7.2-r0"
+        ],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-4775",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-4775"
+        ]
+      },
+      {
+        "id": "CVE-2026-85091",
+        "severity": "MEDIUM",
+        "severity_source": null,
+        "status": "fixed",
+        "affected_packages": [
+          {
+            "name": "zlib",
+            "installed_version": "1.3.2-r0"
+          }
+        ],
+        "fixed_versions": [
+          "1.3.2-r1"
+        ],
+        "references": [
+          "https://github.com/madler/zlib",
+          "https://github.com/madler/zlib/blob/v1.3.2/gzwrite.c#L393"
+        ]
+      }
+    ]
+  },
+  "build_baselines": [
+    {
+      "raw_report": "node-builder-before.json",
+      "raw_report_sha256": "74ebf8fc671a44b558f59238b11622e0213d5c8f0911c85161bdde99c455d9d5",
+      "scanned_at": "2026-10-12T22:50:18.350455+08:00",
+      "image": "node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392",
+      "image_id": "sha256:d0a16be756b6ec6658aecb8b7bcf87fa6c7d0d7fcc6ca53ad14bb49a4c90bdd7",
+      "architecture": "amd64",
+      "finding_records": 262,
+      "unique_ids": 132
+    },
+    {
+      "raw_report": "go-builder-before.json",
+      "raw_report_sha256": "f8d6503fc571a6a79bc93d9052a595c325ddc952f28d01131ee07ac8e18a70a7",
+      "scanned_at": "2026-10-12T22:51:19.387169+08:00",
+      "image": "golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c",
+      "image_id": "sha256:6880d90c0623e6e55560894ff82266f5a06c0f7b1c9ee7f6e2def900d9bc2956",
+      "architecture": "amd64",
+      "finding_records": 3667,
+      "unique_ids": 2775
+    }
+  ],
+  "demo_keycloak": {
+    "production_supported": false,
+    "release_gate_scope": false,
+    "before": {
+      "raw_report": "keycloak-before.json",
+      "raw_report_sha256": "0e88764f11c827c4931a62e0916a8eb30a5816d126b700545b1bcc99469b861f",
+      "scanned_at": "2026-10-12T22:52:27.837261+08:00",
+      "image": "quay.io/keycloak/keycloak:26.8.0@sha256:b0f60d489d51c5d113390bdf5461d4c06e6051be026c05549f2e1e10ec352bcc",
+      "image_id": "sha256:a5e53333adbfe15cf39ca1677760ec6d1ec987bb4490ff76e911c825f96916d5",
+      "architecture": "arm64",
+      "finding_records": 82,
+      "unique_ids": 40
+    },
+    "after": [
+      {
+        "raw_report": "keycloak-after-arm64.json",
+        "raw_report_sha256": "c03228373fbb236bf902859c591976cbf11dcb9bcef6eb9e641c606a20b2ca3e",
+        "scanned_at": "2026-10-12T23:26:19.009534+08:00",
+        "image": "quay.io/keycloak/keycloak:26.8.0@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741",
+        "image_id": "sha256:59e7b567ff84f42764ff97b3c2e49fb7422a919882f018e0e24245822bd4dc02",
+        "architecture": "arm64",
+        "finding_records": 64,
+        "unique_ids": 34
+      },
+      {
+        "raw_report": "keycloak-candidate.json",
+        "raw_report_sha256": "ffb81284495f375184d37d5389a8872e18be08337a5659360e20f6dbf791ab89",
+        "scanned_at": "2026-10-12T22:58:13.414491+08:00",
+        "image": "quay.io/keycloak/keycloak:26.8.0@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741",
+        "image_id": "sha256:e2508edb35d7b3b39468c3e4e77da4e3c8dca8968b055259d60ccfbd29d65e59",
+        "architecture": "amd64",
+        "finding_records": 64,
+        "unique_ids": 34
+      }
+    ],
+    "remaining_findings": [
+      {
+        "id": "CVE-2020-12413",
+        "severity": "LOW",
+        "severity_source": "redhat",
+        "status": "will_not_fix",
+        "affected_packages": [
+          {
+            "name": "nspr",
+            "installed_version": "4.39.0-5.el9_6"
+          },
+          {
+            "name": "nss",
+            "installed_version": "3.124.0-5.el9_6"
+          },
+          {
+            "name": "nss-softokn",
+            "installed_version": "3.124.0-5.el9_6"
+          },
+          {
+            "name": "nss-softokn-freebl",
+            "installed_version": "3.124.0-5.el9_6"
+          },
+          {
+            "name": "nss-sysinit",
+            "installed_version": "3.124.0-5.el9_6"
+          },
+          {
+            "name": "nss-util",
+            "installed_version": "3.124.0-5.el9_6"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2020-12413",
+          "https://nvd.nist.gov/vuln/detail/CVE-2020-12413"
+        ]
+      },
+      {
+        "id": "CVE-2021-46195",
+        "severity": "LOW",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "libgcc",
+            "installed_version": "11.5.0-14.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2021-46195",
+          "https://nvd.nist.gov/vuln/detail/CVE-2021-46195"
+        ]
+      },
+      {
+        "id": "CVE-2022-27943",
+        "severity": "LOW",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "libgcc",
+            "installed_version": "11.5.0-14.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2022-27943",
+          "https://nvd.nist.gov/vuln/detail/CVE-2022-27943"
+        ]
+      },
+      {
+        "id": "CVE-2022-41409",
+        "severity": "LOW",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "pcre2",
+            "installed_version": "10.40-6.el9"
+          },
+          {
+            "name": "pcre2-syntax",
+            "installed_version": "10.40-6.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2022-41409",
+          "https://github.com/PCRE2Project/pcre2/commit/94e1c001761373b7d9450768aa15d04c25547a35",
+          "https://github.com/PCRE2Project/pcre2/issues/141",
+          "https://github.com/advisories/GHSA-4qfx-v7wh-3q4j",
+          "https://nvd.nist.gov/vuln/detail/CVE-2022-41409"
+        ]
+      },
+      {
+        "id": "CVE-2023-50495",
+        "severity": "LOW",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "ncurses-base",
+            "installed_version": "6.2-12.20210508.el9"
+          },
+          {
+            "name": "ncurses-libs",
+            "installed_version": "6.2-12.20210508.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2023-50495",
+          "https://nvd.nist.gov/vuln/detail/CVE-2023-50495"
+        ]
+      },
+      {
+        "id": "CVE-2024-0232",
+        "severity": "LOW",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "sqlite-libs",
+            "installed_version": "3.34.1-11.el9_8"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2024-0232",
+          "https://nvd.nist.gov/vuln/detail/CVE-2024-0232"
+        ]
+      },
+      {
+        "id": "CVE-2024-7531",
+        "severity": "LOW",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "nspr",
+            "installed_version": "4.39.0-5.el9_6"
+          },
+          {
+            "name": "nss",
+            "installed_version": "3.124.0-5.el9_6"
+          },
+          {
+            "name": "nss-softokn",
+            "installed_version": "3.124.0-5.el9_6"
+          },
+          {
+            "name": "nss-softokn-freebl",
+            "installed_version": "3.124.0-5.el9_6"
+          },
+          {
+            "name": "nss-sysinit",
+            "installed_version": "3.124.0-5.el9_6"
+          },
+          {
+            "name": "nss-util",
+            "installed_version": "3.124.0-5.el9_6"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2024-7531",
+          "https://nvd.nist.gov/vuln/detail/CVE-2024-7531"
+        ]
+      },
+      {
+        "id": "CVE-2025-28164",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "java-21-openjdk-headless",
+            "installed_version": "1:21.0.12.1.1-1.2.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2025-28164",
+          "https://github.com/pnggroup/libpng/issues/655",
+          "https://github.com/pnggroup/libpng/pull/657",
+          "https://nvd.nist.gov/vuln/detail/CVE-2025-28164"
+        ]
+      },
+      {
+        "id": "CVE-2025-64505",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "java-21-openjdk-headless",
+            "installed_version": "1:21.0.12.1.1-1.2.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2025-64505",
+          "https://github.com/pnggroup/libpng/commit/6a528eb5fd0dd7f6de1c39d30de0e41473431c37",
+          "https://github.com/pnggroup/libpng/commit/6a528eb5fd0dd7f6de1c39d30de0e41473431c37%20%28v1.6.51%29",
+          "https://github.com/pnggroup/libpng/pull/748",
+          "https://github.com/pnggroup/libpng/security/advisories/GHSA-4952-h5wq-4m42"
+        ]
+      },
+      {
+        "id": "CVE-2025-64506",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "java-21-openjdk-headless",
+            "installed_version": "1:21.0.12.1.1-1.2.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2025-64506",
+          "https://github.com/pnggroup/libpng/commit/2bd84c019c300b78e811743fbcddb67c9d9bf821",
+          "https://github.com/pnggroup/libpng/commit/2bd84c019c300b78e811743fbcddb67c9d9bf821%20%28v1.6.51%29",
+          "https://github.com/pnggroup/libpng/pull/749",
+          "https://github.com/pnggroup/libpng/security/advisories/GHSA-qpr4-xm66-hww6"
+        ]
+      },
+      {
+        "id": "CVE-2025-70873",
+        "severity": "LOW",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "sqlite-libs",
+            "installed_version": "3.34.1-11.el9_8"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2025-70873",
+          "https://nvd.nist.gov/vuln/detail/CVE-2025-70873"
+        ]
+      },
+      {
+        "id": "CVE-2026-102010",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "libgcc",
+            "installed_version": "11.5.0-14.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-102010",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-102010"
+        ]
+      },
+      {
+        "id": "CVE-2026-103111",
+        "severity": "HIGH",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "pcre2",
+            "installed_version": "10.40-6.el9"
+          },
+          {
+            "name": "pcre2-syntax",
+            "installed_version": "10.40-6.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-103111",
+          "https://github.com/PCRE2Project/pcre2/security/advisories/GHSA-r9hj-j2rw-4q3m",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-103111"
+        ]
+      },
+      {
+        "id": "CVE-2026-22693",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "java-21-openjdk-headless",
+            "installed_version": "1:21.0.12.1.1-1.2.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-22693",
+          "https://github.com/harfbuzz/harfbuzz/commit/1265ff8d990284f04d8768f35b0e20ae5f60daae",
+          "https://github.com/harfbuzz/harfbuzz/security/advisories/GHSA-xvjr-f2r9-c7ww",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-22693"
+        ]
+      },
+      {
+        "id": "CVE-2026-27171",
+        "severity": "LOW",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "java-21-openjdk-headless",
+            "installed_version": "1:21.0.12.1.1-1.2.el9"
+          },
+          {
+            "name": "zlib",
+            "installed_version": "1.2.11-40.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-27171",
+          "https://github.com/advisories/GHSA-h858-mf2m-8jf4",
+          "https://github.com/madler/zlib/issues/904",
+          "https://github.com/madler/zlib/releases/tag/v1.3.2",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-27171"
+        ]
+      },
+      {
+        "id": "CVE-2026-34757",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "java-21-openjdk-headless",
+            "installed_version": "1:21.0.12.1.1-1.2.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-34757",
+          "https://github.com/pnggroup/libpng/commit/398cbe3df03f4e11bb031e07f416dfdde3684e8a",
+          "https://github.com/pnggroup/libpng/commit/55d20aaa322c9274491cda82c5cd4f99b48c6bcc",
+          "https://github.com/pnggroup/libpng/issues/836",
+          "https://github.com/pnggroup/libpng/issues/837"
+        ]
+      },
+      {
+        "id": "CVE-2026-40930",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "java-21-openjdk-headless",
+            "installed_version": "1:21.0.12.1.1-1.2.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-40930",
+          "https://github.com/pnggroup/libpng/commit/faf06924688b62d7c1654b5ceddedbde66ffadb4",
+          "https://github.com/pnggroup/libpng/security/advisories/GHSA-c4v6-gxrq-6g2x",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-40930"
+        ]
+      },
+      {
+        "id": "CVE-2026-49919",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "java-21-openjdk-headless",
+            "installed_version": "1:21.0.12.1.1-1.2.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-49919",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-49919"
+        ]
+      },
+      {
+        "id": "CVE-2026-50812",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "sqlite-libs",
+            "installed_version": "3.34.1-11.el9_8"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-50812",
+          "https://github.com/sqlite/sqlite/commit/b869ed6b067d623cb1383549f2a18aa35508385d",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-50812"
+        ]
+      },
+      {
+        "id": "CVE-2026-56391",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "coreutils-single",
+            "installed_version": "8.32-41.el9_8.1"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-56391",
+          "https://github.com/advisories/GHSA-7xvj-m9x7-qgxq",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-56391"
+        ]
+      },
+      {
+        "id": "CVE-2026-5958",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "sed",
+            "installed_version": "4.8-10.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-5958",
+          "https://github.com/advisories/GHSA-9r7w-j29g-xqx8",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-5958"
+        ]
+      },
+      {
+        "id": "CVE-2026-86145",
+        "severity": "HIGH",
+        "severity_source": "redhat",
+        "status": "will_not_fix",
+        "affected_packages": [
+          {
+            "name": "pcre2",
+            "installed_version": "10.40-6.el9"
+          },
+          {
+            "name": "pcre2-syntax",
+            "installed_version": "10.40-6.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-86145",
+          "https://github.com/PCRE2Project/pcre2/releases/tag/pcre2-10.48",
+          "https://github.com/PCRE2Project/pcre2/security/advisories/GHSA-3r4p-g7gg-ppmf",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-86145"
+        ]
+      },
+      {
+        "id": "CVE-2026-8674",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "glibc",
+            "installed_version": "2.34-283.el9_8"
+          },
+          {
+            "name": "glibc-common",
+            "installed_version": "2.34-283.el9_8"
+          },
+          {
+            "name": "glibc-langpack-en",
+            "installed_version": "2.34-283.el9_8"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-8674",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-8674"
+        ]
+      },
+      {
+        "id": "CVE-2026-86805",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "glibc",
+            "installed_version": "2.34-283.el9_8"
+          },
+          {
+            "name": "glibc-common",
+            "installed_version": "2.34-283.el9_8"
+          },
+          {
+            "name": "glibc-langpack-en",
+            "installed_version": "2.34-283.el9_8"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-86805",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-86805"
+        ]
+      },
+      {
+        "id": "CVE-2026-89092",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "glibc",
+            "installed_version": "2.34-283.el9_8"
+          },
+          {
+            "name": "glibc-common",
+            "installed_version": "2.34-283.el9_8"
+          },
+          {
+            "name": "glibc-langpack-en",
+            "installed_version": "2.34-283.el9_8"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-89092",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-89092"
+        ]
+      },
+      {
+        "id": "CVE-2026-89156",
+        "severity": "LOW",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "pcre2",
+            "installed_version": "10.40-6.el9"
+          },
+          {
+            "name": "pcre2-syntax",
+            "installed_version": "10.40-6.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-89156",
+          "https://github.com/PCRE2Project/pcre2/releases/tag/pcre2-10.48",
+          "https://github.com/PCRE2Project/pcre2/security/advisories/GHSA-2p8c-ff85-vh9x",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-89156"
+        ]
+      },
+      {
+        "id": "CVE-2026-89157",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "pcre2",
+            "installed_version": "10.40-6.el9"
+          },
+          {
+            "name": "pcre2-syntax",
+            "installed_version": "10.40-6.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-89157",
+          "https://github.com/PCRE2Project/pcre2/releases/tag/pcre2-10.48",
+          "https://github.com/PCRE2Project/pcre2/security/advisories/GHSA-q8g2-wprr-34m9",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-89157"
+        ]
+      },
+      {
+        "id": "CVE-2026-89158",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "pcre2",
+            "installed_version": "10.40-6.el9"
+          },
+          {
+            "name": "pcre2-syntax",
+            "installed_version": "10.40-6.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-89158",
+          "https://github.com/PCRE2Project/pcre2/releases/tag/pcre2-10.48",
+          "https://github.com/PCRE2Project/pcre2/security/advisories/GHSA-fmgr-6ggq-9859",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-89158"
+        ]
+      },
+      {
+        "id": "CVE-2026-89160",
+        "severity": "LOW",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "pcre2",
+            "installed_version": "10.40-6.el9"
+          },
+          {
+            "name": "pcre2-syntax",
+            "installed_version": "10.40-6.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-89160",
+          "https://github.com/PCRE2Project/pcre2/releases/tag/pcre2-10.48",
+          "https://github.com/PCRE2Project/pcre2/security/advisories/GHSA-9qww-pwc4-77qq",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-89160"
+        ]
+      },
+      {
+        "id": "CVE-2026-89161",
+        "severity": "HIGH",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "pcre2",
+            "installed_version": "10.40-6.el9"
+          },
+          {
+            "name": "pcre2-syntax",
+            "installed_version": "10.40-6.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-89161",
+          "https://github.com/PCRE2Project/pcre2/commit/1dcd0cf42a6a7cb62cc9a7c024196733abcfda95%20%28pcre2-10.48-RC1%29",
+          "https://github.com/PCRE2Project/pcre2/pull/937",
+          "https://github.com/PCRE2Project/pcre2/releases/tag/pcre2-10.48",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-89161"
+        ]
+      },
+      {
+        "id": "CVE-2026-95512",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "java-21-openjdk-headless",
+            "installed_version": "1:21.0.12.1.1-1.2.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-95512",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-95512"
+        ]
+      },
+      {
+        "id": "CVE-2026-95619",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "libgcc",
+            "installed_version": "11.5.0-14.el9"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-95619",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-95619"
+        ]
+      },
+      {
+        "id": "CVE-2026-95818",
+        "severity": "MEDIUM",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "glibc",
+            "installed_version": "2.34-283.el9_8"
+          },
+          {
+            "name": "glibc-common",
+            "installed_version": "2.34-283.el9_8"
+          },
+          {
+            "name": "glibc-langpack-en",
+            "installed_version": "2.34-283.el9_8"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-95818",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-95818"
+        ]
+      },
+      {
+        "id": "CVE-2026-97399",
+        "severity": "LOW",
+        "severity_source": "redhat",
+        "status": "affected",
+        "affected_packages": [
+          {
+            "name": "glibc",
+            "installed_version": "2.34-283.el9_8"
+          },
+          {
+            "name": "glibc-common",
+            "installed_version": "2.34-283.el9_8"
+          },
+          {
+            "name": "glibc-langpack-en",
+            "installed_version": "2.34-283.el9_8"
+          }
+        ],
+        "fixed_versions": [],
+        "references": [
+          "https://access.redhat.com/security/cve/CVE-2026-97399",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-97399"
+        ]
+      }
+    ],
+    "remaining_unique_severities": {
+      "LOW": 12,
+      "MEDIUM": 19,
+      "HIGH": 3
+    }
+  }
+}

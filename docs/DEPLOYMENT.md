@@ -20,6 +20,9 @@
 后端验证 ID token 的签名、issuer、audience、nonce，以及登录回调 state。
 客户端 Secret、授权码交换和 PKCE verifier 均留在服务端。
 
+生产 Keycloak 由组织维护。部署人员须核对其版本、供应商补丁和漏洞状态。
+本机 Demo 的 Keycloak 仍有已知 CVE，不是生产身份服务模板。检查边界见 `docs/SECURITY.md`。
+
 ### 活跃会话自动续期
 
 后端保存 refresh token（刷新令牌）。浏览器只持有应用会话 Cookie。
@@ -57,6 +60,9 @@ WSS 握手要求会话 Cookie 和精确 Origin。会议链接不是登录凭证�
 ## 2. Docker Compose
 
 Compose 使用 Docker Secret 文件，不把客户端密钥写入镜像。
+代理由 `Dockerfile.proxy` 构建为 `webzoom-proxy:local`。它使用固定基础摘要并安装系统修复包。
+代理最终以 UID/GID `101:101` 运行。构建时安装补丁使用的 root 不属于运行权限。
+应用与代理需要分别构建。Docker Hub 自动发布只包含应用镜像。
 OpenShift 则通过 Secret 注入环境变量。
 后端支持 `OIDC_CLIENT_SECRET` 或 `OIDC_CLIENT_SECRET_FILE`，但不能同时设置两者。
 `METRICS_TOKEN` 也支持相同的 `_FILE` 形式。
@@ -281,3 +287,18 @@ CPU、RSS、容器网络流量、重启和网关指标由平台采集。
 服务先验证完整请求，再修改会议。无效请求返回 400，不会部分结束会议。
 同一请求中的重复 ID 只处理一次。并发结束同一会议时，只有首次有效结束返回 `ended`。
 这些限制只保护单次管理请求，不限制服务器会议数量。接口不增加端口，继续使用现有 HTTPS 入口。
+
+## 安全升级
+
+**警告：升级会中断会议，并清空内存中的会议和登录会话。**
+新镜像构建成功不表示正在运行的旧容器已经更新。
+
+1. 核对 `docs/SECURITY.md` 和待部署镜像的扫描报告。
+2. 确认所有会议已结束，并通知参与者。
+3. 构建并扫描应用和代理，或选择已通过发布检查的应用摘要。
+4. 在 Docker 中重新创建应用和代理；在 OpenShift 中执行单副本 Recreate 更新。
+5. 重新登录，并验证屏幕共享、听众播放、会话续期和管理员权限。
+6. 独立检查组织的生产 Keycloak、网关和运行节点。
+
+不要通过删除漏洞记录、忽略无补丁漏洞或关闭扫描来通过发布检查。
+本轮没有更新当前本机服务。测试 Keycloak 的剩余风险和停止条件见安全报告。
