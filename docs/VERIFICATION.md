@@ -383,3 +383,78 @@ GitHub Actions 在发布前另行扫描实际 Linux/AMD64 候选镜像。
 浏览器测试使用本机签名测试 OIDC 服务，屏幕源为合成动画。
 本轮没有完成新 Keycloak digest 的实际登录验收、生产 Keycloak 检查、Edge 实机测试、
 真实 OpenShift 验收、1000 名听众持续 30 分钟容量验收或漏洞利用测试。
+
+
+## 2026-10-13：更新本机 Docker 服务后的验证
+
+用户明确允许更新并中断本机会议。此次只操作 `webzoom-local` Compose 项目。
+应用和代理从已发布修复源码 `6d43fc8` 本地构建为 ARM64 镜像。
+它们不是从 Docker Hub 拉取的 AMD64 发布产物。
+更新前先检查运行镜像，并在旧服务上执行新增的真实 Keycloak 续期回归测试。
+旧服务的 `/auth/refresh` 返回 405，未达到测试要求的 200。
+随后构建、扫描并重新创建本机应用、代理和测试 Keycloak。
+旧会议和本应用登录会话已失效。用户需要重新登录。
+
+### 实际运行镜像与权限
+
+| 服务 | 镜像 ID | 运行用户 | 根文件系统 |
+|---|---|---|---|
+| 应用 | `sha256:6de85ff91e0d8b229bd99fdb30f30b2d538ad126b255f68248e23a92fbf3c362` | `65532:65532` | 只读 |
+| Nginx 代理 | `sha256:c61ae5bdf483df04b6213b6d3a39b692dd581d841ad9d8f88c14c957156fe2d6` | `101:101` | 只读 |
+| 测试 Keycloak | `sha256:59e7b567ff84f42764ff97b3c2e49fb7422a919882f018e0e24245822bd4dc02` | `1000:0` | 开发模式，可写 |
+
+运行应用和代理的镜像 ID 与本次构建的标签一致。
+Keycloak 使用 `26.8.0@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741`。
+三个容器均删除全部 Linux capabilities，并禁止权限提升。
+只有代理发布 `127.0.0.1:8443`。应用和 Keycloak 没有宿主机端口。
+HTTPS 就绪检查使用明确受信任的本机测试 CA，没有关闭证书验证。
+未增加管理员，也未启用会议数量或听众人数的压力测试限制。
+
+### 测试结果
+
+| 检查 | 实际结果 |
+|---|---|
+| `docker compose -f deploy/local/compose.yaml build app proxy` | 通过，包含前端单元测试和生产构建 |
+| HTTPS `/readyz` | 200 |
+| `npm run typecheck` | 通过，包含新增本机测试 |
+| `npm test` | 24 项通过 |
+| `npx playwright test --config playwright.local.config.ts --reporter=line` | 14 项通过，约 5.4 分钟 |
+| 管理员访问检查 | 匿名接口 401；已登录普通用户接口 403；页面显示无权限 |
+| 实际 ARM64 应用和代理镜像扫描 | 各 0 项 |
+| 实际 ARM64 测试 Keycloak 镜像扫描 | 34 个不同 CVE，64 条包漏洞记录 |
+| `git diff --check` | 通过 |
+
+浏览器套件包含 4 项真实 Docker/Keycloak 测试和 10 项接口模拟测试。
+真实测试验证授权码流程与 PKCE、默认可创建超过 5 场会议、首页会议链接和隔离清理。
+真实画面测试验证 VP8 编解码、代理 WSS、晚加入、浏览器全屏、共享权转交和停止共享。
+该测试观察到 61 个浏览器请求和 2 条媒体连接，全部使用本机 HTTPS/WSS。
+另一个真实测试验证匿名访问拒绝，以及用户取消采集后保持未共享状态。
+接口模拟测试覆盖全屏布局、拒绝全屏后的错误提示，以及会议列表的失败和过期处理。
+模拟测试通过不代表对应生产接口通过。
+
+新增的真实时间续期测试使用两个隔离浏览器上下文。
+主持人是 `alice`，被动听众是 `bob`。测试持续 306 秒，没有修改浏览器时钟。
+测试等待超过两人的首次登录有效期，然后确认身份接口仍返回 200，且有效期已经延长。
+两人各完成 1 次成功自动续期，并各保持 1 条媒体连接。
+听众画面持续更新；共享者只采集 1 次；音频轨道为 0；页面运行错误为 0。
+该测试不使用重连掩盖续期问题。清理只结束测试自己创建的会议。
+
+截图：`artifacts/local/docker-viewer.png`、`artifacts/local/docker-viewer-fullscreen.png`、
+`artifacts/local/docker-viewer-renewed.png` 和 `artifacts/local/owned-meetings.png`。
+
+### 漏洞检查与验证边界
+
+扫描包含 UNKNOWN、LOW、MEDIUM、HIGH 和 CRITICAL。没有忽略无补丁记录。
+扫描确认运行应用包含 Go 1.26.9 标准库。
+测试 Keycloak 剩余 HIGH 3 个、MEDIUM 19 个、LOW 12 个不同 CVE。
+这些风险没有被消除。该身份服务仅用于回环地址隔离测试，不是生产 SSO 模板。
+原始报告位于 `artifacts/security/local-update-2026-10-13-{app,proxy,keycloak}.json`。
+这些报告和截图是本机工件，不提交 Git，也不包含真实生产凭据。
+
+浏览器为本机自签名证书设置 `ignoreHTTPSErrors`，仅限隔离测试上下文。
+画面源是合成 Canvas。普通链路测试使用 1920×1080；续期测试使用 1280×720、15fps。
+普通链路截图显示自动降级状态。因此，本次不证明正常质量目标已经达标。
+续期截图中的质量档位标签也不代表画面源达到 1080p30。
+本次未验证操作系统屏幕选择器、实际 Edge、生产 Keycloak、真实 OpenShift、
+目标内网的 1080p30 延迟，或 1000 名听众持续 30 分钟容量。
+当前未配置管理员。本次只验证管理员访问拒绝，不验证真实 Keycloak 管理员批量停止会议。
