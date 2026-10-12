@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -30,7 +31,16 @@ import (
 	"webzoom/internal/server"
 )
 
+func fixtureOrigin() string {
+	port := os.Getenv("WEBZOOM_TEST_PORT")
+	if port == "" {
+		port = "8443"
+	}
+	return "https://127.0.0.1:" + port
+}
+
 func main() {
+	origin := fixtureOrigin()
 	key, _ := rsa.GenerateKey(rand.Reader, 2048)
 	var issuer string
 	var mu sync.Mutex
@@ -80,11 +90,11 @@ func main() {
 	provider := httptest.NewTLSServer(mux)
 	defer provider.Close()
 	issuer = provider.URL
-	listener, e := net.Listen("tcp", "127.0.0.1:8443")
+	listener, e := net.Listen("tcp", strings.TrimPrefix(origin, "https://"))
 	if e != nil {
 		log.Fatal(e)
 	}
-	manager, e := auth.New(oidc.ClientContext(context.Background(), provider.Client()), auth.Config{PublicURL: "https://127.0.0.1:8443", Issuer: issuer, ClientID: "webzoom-test", ClientSecret: "test-secret"})
+	manager, e := auth.New(oidc.ClientContext(context.Background(), provider.Client()), auth.Config{PublicURL: origin, Issuer: issuer, ClientID: "webzoom-test", ClientSecret: "test-secret"})
 	if e != nil {
 		log.Fatal(e)
 	}
@@ -94,7 +104,7 @@ func main() {
 	app.Listener = listener
 	app.StartTLS()
 	defer app.Close()
-	fmt.Println("TEST_ONLY_READY https://127.0.0.1:8443")
+	fmt.Println("TEST_ONLY_READY " + origin)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	<-ctx.Done()
