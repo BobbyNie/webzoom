@@ -51,7 +51,8 @@ jobs:
           npm ci
           npm test
           npm run build
-          npm audit --audit-level=high
+          npm audit --audit-level=low
+          npm audit --prefix ../.github/security/npm --audit-level=low
       - name: Chromium screen-sharing tests
         working-directory: web
         run: |
@@ -84,10 +85,32 @@ jobs:
             org.opencontainers.image.licenses=MIT
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Build patched proxy and inspect build-stage images
+        run: |
+          docker buildx build --load --target frontend --tag webzoom:frontend .
+          docker buildx build --load --target backend --tag webzoom:backend .
+          docker buildx build --load --file Dockerfile.proxy --tag webzoom-proxy:local .
+      - name: Scan candidate, build stages and proxy for all known vulnerabilities
+        env:
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+        run: |
+          bash .github/scripts/install-trivy.sh "$RUNNER_TEMP/trivy"
+          python3 -m venv "$RUNNER_TEMP/scanner-test-venv"
+          "$RUNNER_TEMP/scanner-test-venv/bin/pip" install -r .github/tests/requirements.txt
+          TRIVY_BINARY="$RUNNER_TEMP/trivy/trivy" "$RUNNER_TEMP/scanner-test-venv/bin/python" -m unittest discover -s .github/tests -p test_security.py -v
+          python3 .github/scripts/scan_images.py "$RUNNER_TEMP/trivy/trivy" artifacts/security
       - name: Verify default UID, arbitrary UID and HTTPS proxy
         run: go test -count=1 -tags deploymenttests -v ./internal/deploy
       - name: Validate Compose configuration
         run: docker compose --env-file .env.example config --quiet
+      - name: Keep vulnerability reports on success or failure
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: security-reports
+          path: artifacts/security/*.json
+          retention-days: 14
+          if-no-files-found: warn
       - name: Export the tested image
         run: |
           mkdir -p artifacts/image

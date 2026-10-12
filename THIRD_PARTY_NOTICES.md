@@ -1,6 +1,6 @@
 # 第三方组件
 
-核对日期：2026-10-08。版本以 `go.mod`、`go.sum` 和 `web/package-lock.json` 为准。
+核对日期：2026-10-12。版本以 `go.mod`、`go.sum` 和 `web/package-lock.json` 为准。
 本项目代码采用 MIT 许可证。第三方组件保留各自的许可证。
 
 ## 运行时组件
@@ -30,7 +30,13 @@ Go 模块图还包含 `cloud.google.com/go/compute/metadata v0.3.0`。
 - 构建镜像与 Nginx 代理镜像均固定到 manifest digest。
 - 构建镜像不随应用运行时镜像交付。
 - Nginx 是独立镜像。使用者须保留该镜像提供的许可证。
-- CA 证书包保留 Debian 包的 copyright 文件。
+- CA 信任库来自 Alpine `ca-certificates-bundle 20260909-r0`，包元数据许可证为 MPL-2.0 AND MIT。
+- Mozilla MPL-2.0 原文随应用镜像交付。信任库由 Mozilla `certdata.txt` 生成，保留 MPL-2.0 声明。
+- Alpine 源码：`https://gitlab.alpinelinux.org/alpine/ca-certificates/-/tree/20260909`。
+- 应用不复制证书更新工具。包元数据中的 MIT 部分对应这些工具，不把该许可误认为整个信任库的许可。
+- Alpine 构建阶段升级 zlib 至 `1.3.2-r1` 或更新版本。
+- 构建用 npm `12.2.0`：Artistic-2.0。原文及构建依赖调整说明保存在 `.github/security/npm/`。
+- 构建工具锁文件单独固定安全修复依赖。它不修改应用依赖，也不进入运行镜像。
 
 已读取直接运行时组件的许可证，并核对安装包元数据。
 本次 npm 漏洞检查报告为 0 项。Go 检查结果见验证报告。

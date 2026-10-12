@@ -13,7 +13,7 @@ class GoToolchainTests(unittest.TestCase):
         self.assertIsNotNone(match, "pin the release toolchain")
         version = tuple(map(int, match.groups()))
         self.assertGreaterEqual(version, (1, 26, 9), "Go 1.26.8 has reachable standard-library vulnerabilities")
-        image = re.search(r"^FROM golang:(\d+\.\d+\.\d+)-bookworm@sha256:([0-9a-f]{64}) AS backend$", (ROOT / "Dockerfile").read_text(), re.MULTILINE)
+        image = re.search(r"^FROM golang:(\d+\.\d+\.\d+)-alpine@sha256:([0-9a-f]{64}) AS backend$", (ROOT / "Dockerfile").read_text(), re.MULTILINE)
         self.assertIsNotNone(image, "pin the compiler image by version and digest")
         self.assertEqual(image.group(1), ".".join(map(str, version)))
 
