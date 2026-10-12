@@ -24,10 +24,13 @@ type Config struct {
 	StaticDir, MetricsToken string
 	AdminUserIDs            string
 }
-type app struct{ Config }
+type app struct {
+	Config
+	admins map[string]bool
+}
 
 func New(c Config) http.Handler {
-	a := &app{c}
+	a := &app{Config: c, admins: make(map[string]bool)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ready\n")) })
@@ -54,19 +57,15 @@ func New(c Config) http.Handler {
 		a.Auth.SetSessionCookie(w, renewed)
 		reply(w, 200, map[string]any{"user": renewed.User, "csrf": renewed.CSRF, "expiresAt": renewed.ExpiresAt})
 	}))
-	admins := make(map[string]bool)
 	for _, id := range strings.Split(c.AdminUserIDs, ",") {
 		if id = strings.TrimSpace(id); id != "" {
-			admins[id] = true
+			a.admins[id] = true
 		}
 	}
-	mux.HandleFunc("GET /api/admin/overview", a.secure(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
-		if !admins[s.User.ID] {
-			http.Error(w, "administrator access required", http.StatusForbidden)
-			return
-		}
+	mux.HandleFunc("GET /api/admin/overview", a.administrator(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		reply(w, 200, a.Hub.Overview())
 	}))
+	mux.HandleFunc("POST /api/admin/rooms/end", a.administrator(a.endRooms))
 	mux.HandleFunc("GET /api/me", a.secure(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		reply(w, 200, map[string]any{"user": s.User, "csrf": s.CSRF, "expiresAt": s.ExpiresAt})
 	}))
