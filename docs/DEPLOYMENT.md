@@ -20,10 +20,35 @@
 后端验证 ID token 的签名、issuer、audience、nonce，以及登录回调 state。
 客户端 Secret、授权码交换和 PKCE verifier 均留在服务端。
 
-**有效期警告：**本版没有 refresh token 续期。
-登录会话不超过 access token、ID token 或 8 小时上限。
-在 Keycloak 中检查这些期限。不要为了演示而未经安全审批延长令牌期限。
-容量测试所用会话必须覆盖连接准备时间和 30 分钟测量时间。
+### 活跃会话自动续期
+
+后端保存 refresh token（刷新令牌）。浏览器只持有应用会话 Cookie。
+共享者和听众参加会议时都自动保活，包括没有鼠标操作的听众。
+首页只有最近 60 秒内的真实操作才保活。闲置首页不会无限刷新。
+前端最多间隔 30 秒检查一次状态，并在当前期限剩余 60 秒内发送受 CSRF 保护的续期请求。
+短期令牌使用更短的检查间隔。续期不会重新建立媒体连接。
+
+1. 确认客户端允许使用 refresh token，且授权码交换返回刷新令牌。
+2. 检查 Realm 的 `SSO Session Idle` 和 `SSO Session Max`。
+3. 检查客户端或 Realm 的 `Client Session Idle` 和 `Client Session Max`。
+4. 让 Idle 期限覆盖正常刷新间隔。让 Max 期限覆盖组织允许的会议时长。
+5. 如启用 `Revoke Refresh Token`，保留轮换策略。服务会保存新令牌并串行刷新同一会话。
+6. 保留组织批准的 access token 有效期。不要用延长 access token 代替刷新。
+7. 升级应用后重新登录一次。旧会话不能补出刷新令牌。
+
+刷新请求会更新 Keycloak 的 Idle 计时，但不能越过其 Max 期限。
+本应用也保留登录时确定的 8 小时绝对上限。每次刷新不会重置该上限。
+本应用不请求 `offline_access`，也不会在会话已经到期后恢复它。
+若身份服务不提供刷新令牌，会话仍按原令牌期限到期。
+Keycloak 参考：[Server Administration Guide](https://www.keycloak.org/docs/latest/server_admin/index.html#_timeouts)。
+
+临时网络错误或身份服务 503 不立即撤销尚未到期的会话。页面提示失败并重试。
+刷新被拒绝或返回无效身份令牌时，服务撤销会话并关闭对应媒体连接。
+已到期、已退出和已达绝对上限的会话仍需重新登录。
+
+压力测试浏览器使用相同的保活流程。仅使用 WSS 的负载工具不会自动更新 Cookie。
+此类工具须使用受保护的 `/auth/refresh` 并保存响应 Cookie，或由真实浏览器维护相同测试会话。
+不要把加长生产令牌期限作为容量测试的默认前提。
 
 浏览器只持有 Secure、HttpOnly、SameSite=Lax 的会话 Cookie。
 HTTP 变更操作要求同源 Origin 和 CSRF token。

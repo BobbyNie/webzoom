@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -39,12 +40,22 @@ func fixtureOrigin() string {
 	return "https://127.0.0.1:" + port
 }
 
+func fixtureTokenSeconds() int {
+	n, err := strconv.Atoi(os.Getenv("WEBZOOM_TEST_TOKEN_SECONDS"))
+	if err != nil || n < 5 {
+		return 3600
+	}
+	return n
+}
+
 func main() {
+	lifetime := fixtureTokenSeconds()
 	origin := fixtureOrigin()
 	key, _ := rsa.GenerateKey(rand.Reader, 2048)
 	var issuer string
 	var mu sync.Mutex
 	codes := map[string]url.Values{}
+	refreshes := map[string]url.Values{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"issuer": issuer, "authorization_endpoint": issuer + "/authorize", "token_endpoint": issuer + "/token", "jwks_uri": issuer + "/keys", "id_token_signing_alg_values_supported": []string{"RS256"}})
@@ -72,20 +83,35 @@ func main() {
 	mux.HandleFunc("POST /token", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 		mu.Lock()
-		v, ok := codes[r.Form.Get("code")]
-		delete(codes, r.Form.Get("code"))
-		mu.Unlock()
-		sum := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
-		if !ok || base64.RawURLEncoding.EncodeToString(sum[:]) != v.Get("code_challenge") {
-			http.Error(w, "invalid code or PKCE", 400)
+		var v url.Values
+		var ok bool
+		if r.Form.Get("grant_type") == "refresh_token" {
+			v, ok = refreshes[r.Form.Get("refresh_token")]
+			delete(refreshes, r.Form.Get("refresh_token"))
+		} else {
+			v, ok = codes[r.Form.Get("code")]
+			delete(codes, r.Form.Get("code"))
+			sum := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
+			ok = ok && base64.RawURLEncoding.EncodeToString(sum[:]) == v.Get("code_challenge")
+		}
+		if !ok {
+			mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(400)
+			json.NewEncoder(w).Encode(map[string]any{"error": "invalid_grant"})
 			return
 		}
-		claims, _ := json.Marshal(map[string]any{"iss": issuer, "sub": v.Get("username"), "aud": "webzoom-test", "exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(), "nonce": v.Get("nonce"), "name": v.Get("username")})
+		b := make([]byte, 24)
+		rand.Read(b)
+		refresh := base64.RawURLEncoding.EncodeToString(b)
+		refreshes[refresh] = v
+		mu.Unlock()
+		claims, _ := json.Marshal(map[string]any{"iss": issuer, "sub": v.Get("username"), "aud": "webzoom-test", "exp": time.Now().Add(time.Duration(lifetime) * time.Second).Unix(), "iat": time.Now().Unix(), "nonce": v.Get("nonce"), "name": v.Get("username")})
 		unsigned := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","kid":"test"}`)) + "." + base64.RawURLEncoding.EncodeToString(claims)
 		hash := sha256.Sum256([]byte(unsigned))
 		sig, _ := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, hash[:])
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"access_token": "test-access", "token_type": "Bearer", "expires_in": 3600, "id_token": unsigned + "." + base64.RawURLEncoding.EncodeToString(sig)})
+		json.NewEncoder(w).Encode(map[string]any{"access_token": "test-access", "token_type": "Bearer", "expires_in": lifetime, "refresh_token": refresh, "id_token": unsigned + "." + base64.RawURLEncoding.EncodeToString(sig)})
 	})
 	provider := httptest.NewTLSServer(mux)
 	defer provider.Close()

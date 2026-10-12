@@ -14,3 +14,14 @@ func TestIsolatedFixturePort(t *testing.T) {
 		t.Fatal("default port changed")
 	}
 }
+
+func TestShortFixtureTokenLifetime(t *testing.T) {
+	t.Setenv("WEBZOOM_TEST_TOKEN_SECONDS", "8")
+	if fixtureTokenSeconds() != 8 {
+		t.Fatal("fixture did not use short token lifetime")
+	}
+	t.Setenv("WEBZOOM_TEST_TOKEN_SECONDS", "")
+	if fixtureTokenSeconds() != 3600 {
+		t.Fatal("default lifetime changed")
+	}
+}

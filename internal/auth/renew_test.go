@@ -28,6 +28,7 @@ type renewalProvider struct {
 	failure, badClaim                 string
 	lifetime                          int
 	key                               *rsa.PrivateKey
+	started, release                  chan struct{}
 }
 
 func newRenewalLogin(t *testing.T, lifetime int) (*Manager, *Session, *renewalProvider) {
@@ -83,6 +84,10 @@ func (p *renewalProvider) token(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	life := p.lifetime
 	if r.Form.Get("grant_type") == "refresh_token" {
+		if p.started != nil {
+			close(p.started)
+			<-p.release
+		}
 		p.calls++
 		if p.failure != "" {
 			w.Header().Set("Content-Type", "application/json")
@@ -269,5 +274,37 @@ func TestIdleAndNonRefreshableSessionsExpire(t *testing.T) {
 	m.mu.Unlock()
 	if _, err = m.Renew(context.Background(), s.ID); !errors.Is(err, ErrExpired) {
 		t.Fatal("idle session revived")
+	}
+}
+
+func TestLogoutDuringRefreshDoesNotReviveSession(t *testing.T) {
+	m, s, p := newRenewalLogin(t, 30)
+	started, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	t.Cleanup(unblock)
+	p.mu.Lock()
+	p.started = started
+	p.release = release
+	p.mu.Unlock()
+	result := make(chan error, 1)
+	go func() { _, err := m.Renew(context.Background(), s.ID); result <- err }()
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("refresh did not start")
+	}
+	m.Delete(s.ID)
+	unblock()
+	select {
+	case err := <-result:
+		if !errors.Is(err, ErrExpired) {
+			t.Fatalf("logged-out session renewed: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("refresh did not finish")
+	}
+	if _, ok := m.ByID(s.ID); ok {
+		t.Fatal("logout undone by refresh")
 	}
 }

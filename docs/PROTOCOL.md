@@ -23,6 +23,7 @@
 |---|---|---|
 | GET | `/auth/login?next=/m/<id>` | 跳转到 OIDC；next 只允许站内路径 |
 | GET | `/auth/callback` | 校验 state、PKCE、签名和 nonce，创建会话 |
+| POST | `/auth/refresh` | JSON `{}`；活跃会话续期，返回 `user`、`csrf`、`expiresAt` 并更新会话 Cookie |
 | POST | `/auth/logout` | 删除当前应用会话，关闭相关媒体连接 |
 | GET | `/api/me` | 返回 `user`、`csrf`、`expiresAt` |
 | GET | `/api/rooms` | 当前登录用户创建的有效会议；按创建时间从新到旧排列；空列表返回 `[]` |
@@ -38,6 +39,27 @@
 只有已加入者可以 start、stop 或 transfer。固定主持人可以结束自己的会议。
 会议不存在或已经结束时，返回 404。
 容量限制返回 429。状态冲突返回 409。权限不足返回 403。未登录返回 401。
+
+## 会话续期
+
+`POST /auth/refresh` 必须携带会话 Cookie、同源 Origin 和正确的 CSRF token。
+服务只在当前期限剩余 60 秒内尝试刷新。没有 refresh token 时不延长原期限。
+令牌只保存在服务端。响应不包含 access token、ID token、refresh token 或客户端 Secret。
+成功响应禁止缓存，并更新 Secure、HttpOnly、SameSite=Lax 的会话 Cookie。
+并发请求串行处理同一会话的刷新令牌，避免令牌轮换竞争。
+刷新不得复活已退出或已到期的会话，也不得突破初次登录的 8 小时上限。
+
+- 成功或尚未进入刷新窗口：200，返回当前会话身份和期限。
+- 当前会话不存在或到期：401。
+- Keycloak 拒绝刷新或新身份校验失败：401，撤销会话并关闭媒体连接。
+- Origin 或 CSRF 校验失败：403，不访问令牌端点。
+- 身份服务临时故障：503，保留尚未到期的会话；前端提示并重试。
+
+浏览器参加会议时自动保活。首页仅在近期真实操作时保活。
+`GET /api/me` 只读取状态，不刷新令牌。闲置标签页用它确认其他标签页是否已经续期。
+WSS 在当前到期计时器触发时重新读取最新会话期限。
+有效续期只更新计时器，不关闭连接、重置解码器或重新请求采集权限。
+WSS 媒体帧、clock 控制消息和 ping 本身不刷新 Cookie。
 
 ## WSS 控制消息
 
