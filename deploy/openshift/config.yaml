@@ -3,6 +3,7 @@ kind: ConfigMap
 metadata:
   name: webzoom-config
 data:
+  ADMIN_USER_IDS: "" # Comma-separated OIDC sub values; empty disables admin access.
   PUBLIC_URL: https://webzoom.apps.example.intranet
   OIDC_ISSUER: https://keycloak.example.intranet/realms/company
   OIDC_CLIENT_ID: webzoom

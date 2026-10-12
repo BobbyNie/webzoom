@@ -140,3 +140,10 @@ docker compose -f deploy/local/compose.yaml up -d
 `LOAD_TEST_MAX_ROOMS` 和 `LOAD_TEST_MAX_VIEWERS` 的正值只用于压力测试。
 自动化测试必须只结束自己创建的会议，不能删除同一用户的其他会议。
 重建或重启 app 会删除全部内存会议和本应用登录会话。Keycloak Cookie 可能仍有效。
+
+## 管理员总览
+
+使用测试账号登录后，通过 `/api/me` 获取 `user.id`。不要将用户名当作 ID。
+启动 Compose 时设置 `ADMIN_USER_IDS=first-user-sub,second-user-sub`，即可访问 `/admin`。
+默认没有管理员。配置方法和流量定义见 `../../docs/DEPLOYMENT.md`。
+重新创建应用容器会中断当前会议。请先结束测试会议。
