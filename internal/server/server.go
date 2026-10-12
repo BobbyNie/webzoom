@@ -317,7 +317,7 @@ func (a *app) metrics(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (a *app) static(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" && !strings.HasPrefix(r.URL.Path, "/m/") && !strings.HasPrefix(r.URL.Path, "/assets/") && r.URL.Path != "/favicon.svg" {
+	if r.URL.Path != "/" && r.URL.Path != "/admin" && !strings.HasPrefix(r.URL.Path, "/m/") && !strings.HasPrefix(r.URL.Path, "/assets/") && r.URL.Path != "/favicon.svg" {
 		http.NotFound(w, r)
 		return
 	}

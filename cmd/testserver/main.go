@@ -125,7 +125,7 @@ func main() {
 		log.Fatal(e)
 	}
 	hub := meeting.New(meeting.Config{})
-	app := httptest.NewUnstartedServer(server.New(server.Config{Auth: manager, Hub: hub, StaticDir: "web/dist", MetricsToken: "test-metrics"}))
+	app := httptest.NewUnstartedServer(server.New(server.Config{Auth: manager, Hub: hub, StaticDir: "web/dist", MetricsToken: "test-metrics", AdminUserIDs: os.Getenv("ADMIN_USER_IDS")}))
 	app.Listener.Close()
 	app.Listener = listener
 	app.StartTLS()

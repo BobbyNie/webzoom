@@ -1,8 +1,10 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 	"webzoom/internal/auth"
@@ -34,5 +36,37 @@ func TestAdminAuthorization(t *testing.T) {
 				t.Fatal("cacheable overview")
 			}
 		}
+	}
+}
+
+func TestAdminOverviewReturnsOnlySummaryAndRejectsExpiredSession(t *testing.T) {
+	a := auth.NewStore("https://example.test")
+	h := meeting.New(meeting.Config{})
+	user := meeting.User{ID: "admin", Name: "Private Name"}
+	s, _ := a.NewSession(user, time.Now().Add(time.Hour))
+	room, _ := h.Create(user)
+	h.Join(room.ID, user, s.ID)
+	handler := New(Config{Auth: a, Hub: h, AdminUserIDs: "admin"})
+	req := httptest.NewRequest("GET", "https://example.test/api/admin/overview", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookie, Value: s.ID})
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	var got meeting.Overview
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if res.Code != 200 || len(got.Rooms) != 1 || got.Rooms[0].ID != room.ID || got.Rooms[0].Participants != 1 || got.InstanceID == "" {
+		t.Fatal(res.Code, res.Body.String())
+	}
+	for _, private := range []string{s.ID, s.CSRF, "Private Name", "ownerId", "publisherId"} {
+		if strings.Contains(res.Body.String(), private) {
+			t.Fatal("private data in overview")
+		}
+	}
+	a.Delete(s.ID)
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != 401 {
+		t.Fatal("expired administrator still allowed", res.Code)
 	}
 }
