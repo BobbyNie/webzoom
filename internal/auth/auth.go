@@ -95,6 +95,9 @@ func cookie(w http.ResponseWriter, name, value string, expires time.Time) {
 	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, Expires: expires, MaxAge: age})
 }
 func safeNext(s string) string {
+	if s == "/admin" {
+		return s
+	}
 	if strings.HasPrefix(s, "/m/") && !strings.ContainsAny(s, "\\\r\n?#") && len(s) < 128 {
 		return s
 	}

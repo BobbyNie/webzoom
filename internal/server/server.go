@@ -22,6 +22,7 @@ type Config struct {
 	Auth                    *auth.Manager
 	Hub                     *meeting.Hub
 	StaticDir, MetricsToken string
+	AdminUserIDs            string
 }
 type app struct{ Config }
 
@@ -52,6 +53,19 @@ func New(c Config) http.Handler {
 		}
 		a.Auth.SetSessionCookie(w, renewed)
 		reply(w, 200, map[string]any{"user": renewed.User, "csrf": renewed.CSRF, "expiresAt": renewed.ExpiresAt})
+	}))
+	admins := make(map[string]bool)
+	for _, id := range strings.Split(c.AdminUserIDs, ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			admins[id] = true
+		}
+	}
+	mux.HandleFunc("GET /api/admin/overview", a.secure(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
+		if !admins[s.User.ID] {
+			http.Error(w, "administrator access required", http.StatusForbidden)
+			return
+		}
+		reply(w, 200, a.Hub.Overview())
 	}))
 	mux.HandleFunc("GET /api/me", a.secure(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		reply(w, 200, map[string]any{"user": s.User, "csrf": s.CSRF, "expiresAt": s.ExpiresAt})
@@ -239,7 +253,7 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 			return false
 		}
 		if typ == websocket.MessageBinary {
-			a.Hub.Metrics.Egress.Add(uint64(len(b)))
+			a.Hub.RecordEgress(p, len(b))
 		}
 		return true
 	}

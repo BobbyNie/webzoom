@@ -193,3 +193,11 @@ func TestOIDCRejectsInsecureDiscoveredEndpoints(t *testing.T) {
 		})
 	}
 }
+
+func TestAdminLoginReturnPath(t *testing.T) {
+	for _, tc := range []struct{ input, want string }{{"/admin", "/admin"}, {"//evil.test/admin", "/"}, {"/admin?next=https://evil.test", "/"}, {"/admin/evil", "/"}, {"/admin\\evil", "/"}} {
+		if got := safeNext(tc.input); got != tc.want {
+			t.Errorf("safeNext(%q)=%q want %q", tc.input, got, tc.want)
+		}
+	}
+}

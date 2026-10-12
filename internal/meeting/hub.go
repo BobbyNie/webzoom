@@ -38,6 +38,7 @@ type Event struct {
 	ServerTime int64     `json:"serverTime,omitempty"`
 }
 type Peer struct {
+	traffic           *traffic
 	User              User
 	SessionID, RoomID string
 	Events            chan Event
@@ -46,6 +47,7 @@ type Peer struct {
 	Reason            string
 }
 type room struct {
+	traffic traffic
 	Snapshot
 	peers                                      map[string]*Peer
 	emptyAt, lastKey, lastFeedback, timeWindow time.Time
@@ -59,17 +61,19 @@ type Config struct {
 }
 type Metrics struct{ Ingress, Egress, Dropped, Degraded atomic.Uint64 }
 type Hub struct {
-	mu      sync.Mutex
-	rooms   map[string]*room
-	cfg     Config
-	Metrics Metrics
+	instanceID string
+	startedAt  time.Time
+	mu         sync.Mutex
+	rooms      map[string]*room
+	cfg        Config
+	Metrics    Metrics
 }
 
 func New(c Config) *Hub {
 	if c.Now == nil {
 		c.Now = time.Now
 	}
-	return &Hub{rooms: make(map[string]*room), cfg: c}
+	return &Hub{instanceID: token(), startedAt: c.Now(), rooms: make(map[string]*room), cfg: c}
 }
 func token() string {
 	b := make([]byte, 24)
@@ -152,7 +156,7 @@ func (h *Hub) Join(id string, u User, session string) (*Peer, error) {
 	if h.cfg.MaxViewers > 0 && len(r.peers) >= h.cfg.MaxViewers+1 {
 		return nil, ErrCapacity
 	}
-	p := &Peer{User: u, SessionID: session, RoomID: id, Events: make(chan Event, 32), Media: media.NewQueue(8, 2<<20), Done: make(chan struct{})}
+	p := &Peer{traffic: &r.traffic, User: u, SessionID: session, RoomID: id, Events: make(chan Event, 32), Media: media.NewQueue(8, 2<<20), Done: make(chan struct{})}
 	r.peers[u.ID] = p
 	r.emptyAt = time.Time{}
 	h.broadcast(r)
@@ -354,6 +358,7 @@ func (h *Hub) Publish(p *Peer, data []byte) error {
 	r.hasSequence = true
 	r.lastSequence = f.Sequence
 	h.Metrics.Ingress.Add(uint64(len(data)))
+	r.traffic.ingress.Add(uint64(len(data)))
 	needKey := false
 	for _, v := range r.peers {
 		if v == p {
