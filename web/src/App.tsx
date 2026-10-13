@@ -2,7 +2,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {captureScreen,checkCapabilities,Publisher,Viewer,type MediaStats} from './media';
 import {profiles} from './quality';
 import type {Control,Identity,Room} from './types';
-import {APIError,request} from './api';
+import {APIError,request,isBandwidthLimitError,bandwidthMessage} from './api';
 import {MyMeetings} from './MyMeetings';
 import {keepSessionAlive} from './session';
 
@@ -54,7 +54,7 @@ export default function App(){
    roomRef.current=next;setRoom(next);viewer.current?.setLevel(next.quality??0);
   }
   async function connect(){
-   try{const next=await request<Room>(`/api/rooms/${encodeURIComponent(roomID)}`);if(disposed)return;apply(next);}catch(e){if(disposed)return;const status=(e as APIError).status;if(status===401){setError('登录已过期。请重新登录。');setIdentity(null);return}if(status===404){setError('会议已结束或已过期。');setTerminal(true);return}schedule();return;}
+   try{const next=await request<Room>(`/api/rooms/${encodeURIComponent(roomID)}`);if(disposed)return;apply(next);}catch(e){if(disposed)return;const status=(e as APIError).status;if(status===401){setError('登录已过期。请重新登录。');setIdentity(null);return}if(status===404){setError('会议已结束或已过期。');setTerminal(true);return}if(isBandwidthLimitError(e)){setNotice(bandwidthMessage);timer=setTimeout(connect,5000);return}schedule();return;}
    const ws=new WebSocket(`${location.origin.replace('https:','wss:')}/api/rooms/${encodeURIComponent(roomID)}/ws`);socket.current=ws;ws.binaryType='arraybuffer';
    ws.onopen=()=>{if(disposed){ws.close();return}setConnected(true);setNotice('');attempts=0;send({type:'clock',clientTime:Date.now()});};
    ws.onmessage=ev=>{if(disposed)return;if(ev.data instanceof ArrayBuffer){if(roomRef.current?.active&&!publisher.current){lastVideo.current=Date.now();viewer.current?.receive(ev.data)}return;}
@@ -90,7 +90,7 @@ export default function App(){
   const p=new Publisher(stream,next.epoch,socket.current,()=>offset.current,canvas.current!,s=>{setStats(s);send({type:'quality',level:s.level})},e=>{setError(`共享失败：${e.message}`);stopLocal();void action('stop').catch(()=>{});});
   publisher.current=p;stream.getVideoTracks()[0].onended=()=>{stopLocal();void action('stop').catch(()=>{});};await p.start();setSharing(true);
  }catch(e){stopLocal();if(started)void action('stop').catch(()=>{});const err=e as Error;setError(err.name==='NotAllowedError'?'未开始共享：授权已取消或被浏览器拒绝。':err.message);}finally{setBusy(false);}}
- async function perform(fn:()=>Promise<unknown>){setBusy(true);setError('');try{await fn();}catch(e){const err=e as APIError;if(err.status===401){onUnauthorized();return}setError(err.status===403?'你没有执行此操作的权限。':err.status===429?'当前环境启用了压力测试容量限制。请联系维护人员检查测试配置。':err.message);}finally{setBusy(false)}}
+ async function perform(fn:()=>Promise<unknown>){setBusy(true);setError('');try{await fn();}catch(e){const err=e as APIError;if(err.status===401){onUnauthorized();return}setError(isBandwidthLimitError(err)?bandwidthMessage:err.status===403?'你没有执行此操作的权限。':err.status===429?'当前环境启用了压力测试容量限制。请联系维护人员检查测试配置。':err.message);}finally{setBusy(false)}}
  const onUnauthorized=useCallback(()=>{setError('登录已过期。请重新登录。');setIdentity(null);},[]);
  const owner=identity?.user.id===room?.ownerId,canPublish=identity?.user.id===room?.publisherId;
  const active=!!room?.active&&connected&&!stalled;

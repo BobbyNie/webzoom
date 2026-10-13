@@ -2,8 +2,9 @@ import {useEffect,useRef,useState} from 'react';
 import {APIError,request} from './api';
 import {keepSessionAlive} from './session';
 import type {Identity} from './types';
-import {trafficRate,type Overview} from './adminMetrics';
+import {trafficRate,type BandwidthStatus,type Overview} from './adminMetrics';
 import AdminMeetings from './AdminMeetings';
+import AdminBandwidth from './AdminBandwidth';
 import type {EndResponse} from './adminBatch';
 import './admin.css';
 
@@ -83,7 +84,7 @@ export default function Admin(){
   <header className="admin-header"><a href="/">WebZoom</a><span>管理员页面</span><a href="/">返回会议首页</a></header>
   <main className="admin-main">
    <h1>管理员总览</h1>
-   <p className="admin-description">每 5 秒更新。管理员可以结束选定会议。此页面不设置会议或人数限制。</p>
+   <p className="admin-description">每 5 秒更新。管理员可以结束选定会议。管理员可以设置总流量接入上限。会议数量和人数仍不受固定限制。</p>
    {status&&<p role="alert" className="admin-message">{status}</p>}
    {notice&&<p role="status" className="admin-message">{notice}</p>}
    {login&&<a className="button primary" href="/auth/login?next=%2Fadmin">使用 SSO 登录</a>}
@@ -96,6 +97,18 @@ export default function Admin(){
     </section>
 
    </>}
+   {authorized&&<AdminBandwidth current={current} save={async(limit,signal)=>{
+    try{
+     if(!identityRef.current)throw new APIError(401,'authentication required');
+     return await request<BandwidthStatus>('/api/admin/bandwidth',identityRef.current.csrf,{limitMbps:limit},signal);
+    }catch(error){
+     if(error instanceof APIError&&(error.status===401||error.status===403))denyRef.current(error.status===401);
+     throw error;
+    }
+   }} onSaved={bandwidth=>{
+    setSample(s=>s?{...s,current:{...s.current,bandwidth}}:s);
+    refreshRef.current();
+   }}/>}
    {authorized&&<AdminMeetings current={current} previous={previous} endRooms={async(ids,signal)=>{
     try{
      if(!identityRef.current)throw new APIError(401,'authentication required');
