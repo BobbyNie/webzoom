@@ -5,8 +5,12 @@
 - Browser traffic uses HTTPS/WSS only. No WebRTC, TURN, UDP, audio or camera.
 - Desktop Chromium browsers; screen capture → WebCodecs VP8 → bounded WebSocket relay → WebCodecs canvas rendering.
 - Keycloak OIDC authorization code + PKCE. All participants authenticate.
-- Any authenticated user creates a room. One authorized publisher at a time. Only the owner transfers publishing or ends a room.
-- Single Go instance, in-memory state, React/TypeScript frontend. Restart invalidates rooms and sessions.
+- Any authenticated user creates a room. One authorized publisher at a time. Only the owner transfers publishing. Owners can end their own rooms. Administrators can end selected rooms, including rooms owned by others.
+- Single Go instance, React/TypeScript frontend. Rooms, sessions and traffic counters stay in memory. Restart invalidates rooms and sessions.
+- Administrators can change the global media admission limit. The default is 200 Mbps, measured over five seconds of media ingress plus egress.
+- Exceeding the limit blocks new rooms and connections, including reconnects. Existing connections remain active. This is not traffic shaping.
+- The limit is saved in `/data/bandwidth.json`, backed by a Docker volume or OpenShift PVC. Saved values take precedence over startup defaults.
+- Successful saves apply immediately and survive restarts. Failed saves leave the active limit unchanged.
 - Docker Compose TLS proxy and OpenShift edge Route; non-root arbitrary UID image.
 - Normal deployment has no fixed room or viewer count limits. Positive limits are opt-in for isolated load tests only.
 - Load-test goal: 5 rooms × 200 viewers, 1080p30 and p95 capture-to-render ≤ 1 second. Degradation is visible and is not a substitute for passing the normal-quality target.

@@ -28,7 +28,10 @@ mkdir -p .secrets/local
 openssl req -x509 -newkey rsa:2048 -sha256 -days 7 -nodes \
   -keyout .secrets/local/privkey.pem -out .secrets/local/fullchain.pem \
   -subj '/CN=webzoom.localhost' \
-  -addext 'subjectAltName=DNS:webzoom.localhost,DNS:localhost,IP:127.0.0.1'
+  -addext 'subjectAltName=DNS:webzoom.localhost,DNS:localhost,IP:127.0.0.1' \
+  -addext 'basicConstraints=critical,CA:FALSE' \
+  -addext 'keyUsage=critical,digitalSignature,keyEncipherment' \
+  -addext 'extendedKeyUsage=serverAuth'
 chmod 755 .secrets/local
 chmod 644 .secrets/local/fullchain.pem .secrets/local/privkey.pem
 ```
@@ -56,6 +59,62 @@ curl --resolve webzoom.localhost:8443:127.0.0.1 \
 
 应用通过 TLS 验证测试证书，不关闭服务端证书校验。
 Docker 内部通过网络别名解析 `webzoom.localhost`。Chromium 在宿主机上将它解析为回环地址。
+
+### 普通浏览器的证书信任（macOS）
+
+必要条件：证书由你按上述步骤生成，或由组织批准的证书服务提供。
+以下步骤仅适用于本机自签名测试证书。其他操作系统按组织的证书管理流程配置。
+curl --cacert 成功不表示浏览器已信任证书。它只验证该次请求使用的指定证书。
+
+**警告：添加信任会改变当前用户的 HTTPS 信任设置。先核对证书，不要信任来源不明的证书。**
+不要关闭浏览器证书验证。不要把测试证书导入系统根证书库。
+
+1. 查看证书指纹、有效期和扩展。
+
+```sh
+openssl x509 -in .secrets/local/fullchain.pem -noout -sha256 -fingerprint -dates -text
+```
+
+2. 记录 SHA-256 指纹。确认主机名包含 `webzoom.localhost`，证书未过期，且 `CA:FALSE`。
+3. 打开 macOS“钥匙串访问”，选择当前用户的“登录”钥匙串。
+4. 使用“文件 → 导入项目”导入 `.secrets/local/fullchain.pem`。不要导入私钥。
+5. 双击导入的证书，核对指纹与第 2 步相同。
+6. 展开“信任”，仅将“安全套接字层（SSL）”设为“始终信任”。其他用途保留默认值。
+7. 关闭证书窗口，并按系统提示确认更改。
+8. 使用系统 curl 验证 HTTPS。以下命令不指定额外证书，也不跳过验证。
+
+```sh
+/usr/bin/curl --fail --silent --show-error \
+  --resolve webzoom.localhost:8443:127.0.0.1 \
+  https://webzoom.localhost:8443/readyz
+```
+
+9. 在浏览器新标签页打开 `https://webzoom.localhost:8443/`，确认没有证书警告。
+10. 如果仍有警告，退出并重新打开浏览器，再检查实际证书的指纹、主机名和有效期。
+
+如果组织策略禁止手动信任，停止此操作，并申请组织批准的本机证书。
+钥匙串操作参考 Apple《Change the trust settings of a certificate in Keychain Access on Mac》。
+
+### 证书到期、更换与撤销信任
+
+**警告：重新创建应用会中断会议，并清空应用登录会话。先结束测试会议。**
+七天测试证书到期前必须更换。不要覆盖仍在使用的有效证书。
+
+1. 在受限备份目录中保存旧证书和私钥，记录旧证书指纹。不要提交这些文件。
+2. 按生成步骤在单独目录生成新证书，并检查有效期、主机名和 `CA:FALSE`。
+3. 将新证书及匹配私钥替换到 `.secrets/local/`，保持非 root 代理所需的读取权限。
+4. 按上述步骤核对并信任新证书。旧证书的信任不会自动转移到新证书。
+5. 重新创建应用和代理，使应用读取新的信任文件，并使代理加载新的证书。
+
+```sh
+docker compose -f deploy/local/compose.yaml up -d --force-recreate app proxy
+```
+
+6. 重复严格 HTTPS 检查和浏览器检查，然后重新登录测试账号。
+7. 在“钥匙串访问”中按旧指纹定位旧证书，将 SSL 信任恢复为系统默认，并删除该测试证书。
+
+测试结束后，按同样方法撤销当前测试证书的信任。只操作已核对指纹的测试证书。
+不要删除组织证书。不要删除 `app-data` 卷。证书更换不需要重启 Keycloak。
 
 ## 2. 浏览器试用
 
@@ -86,7 +145,7 @@ Docker 内部通过网络别名解析 `webzoom.localhost`。Chromium 在宿主�
 
 普通浏览器会提示自签名证书不受信任。本配置不会自动绕过安全提示。
 自动化测试只在独立的测试浏览器上下文中设置 `ignoreHTTPSErrors`。
-需要普通浏览器无警告访问时，由用户或管理员配置可信的本地证书。
+需要普通浏览器无警告访问时，先完成上文“普通浏览器的证书信任”步骤。
 测试完成后不要把忽略证书错误的设置用于其他站点。
 
 Keycloak 使用内存数据库。它重启后会重新导入测试账号。
