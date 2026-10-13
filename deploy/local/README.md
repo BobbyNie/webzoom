@@ -93,6 +93,18 @@ Keycloak 使用内存数据库。它重启后会重新导入测试账号。
 WebZoom 重启后会议和应用会话失效。参加会议的共享者和听众会自动续期。
 续期仍受 Keycloak 期限和应用登录 8 小时绝对上限约束。闲置首页不会无限续期。
 
+### 总流量设置保存
+
+本机 Compose 把 `app-data` 命名卷挂载到 `/data`。
+初始值由 `TOTAL_BANDWIDTH_LIMIT_MBPS` 指定，默认 200 Mbps。
+管理员在 `/admin` 保存的上限写入 `/data/bandwidth.json`，容器重启后保留。
+已有文件时，保存值优先于启动环境变量。会议和登录会话仍在重启后失效。
+
+不要执行 `docker compose -f deploy/local/compose.yaml down -v`，否则保存值会被删除。
+不增加管理员时，`ADMIN_USER_IDS` 仍为空，测试账号没有管理员权限。
+配置管理员必须填写实际 OIDC 用户 ID，不要填写 `alice` 或 `bob`。
+权限、计量规则和恢复步骤见 `../../docs/DEPLOYMENT.md`。
+
 ## 3. 自动化验证
 
 必要条件：按项目开发说明安装前端依赖和 Playwright Chromium，并启动本机容器。

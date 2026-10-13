@@ -31,6 +31,8 @@
 | GET | `/api/rooms/<id>` | 获取 Snapshot |
 | POST | `/api/rooms/<id>/actions` | JSON：`{"action":"start|stop|transfer|end","target":"用户ID"}` |
 | GET | `/api/rooms/<id>/ws` | 带会话和 Origin 的 WebSocket Upgrade；连接即加入 |
+| GET | `/api/admin/overview` | 管理员总览，含 `bandwidth`：`limitMbps`、`totalMbps`、`blocked`、`windowSeconds` |
+| POST | `/api/admin/bandwidth` | 管理员保存上限，JSON：`{"limitMbps":200}`；返回当前 `bandwidth` 状态 |
 | GET | `/healthz`、`/readyz` | 进程健康检查 |
 | GET | `/metrics` | 独立 Bearer token 认证的监控接口 |
 
@@ -60,6 +62,30 @@
 WSS 在当前到期计时器触发时重新读取最新会话期限。
 有效续期只更新计时器，不关闭连接、重置解码器或重新请求采集权限。
 WSS 媒体帧、clock 控制消息和 ping 本身不刷新 Cookie。
+
+## 总流量接入策略
+
+所有管理员接口继续要求有效会话和管理员 ID。变更接口要求同源 Origin 和 CSRF token。
+上限范围为 1 至 1000000 的整数 Mbps，默认 200。保存成功后立即生效，服务重启后保留。
+保存失败返回 503，正文为 `cannot save bandwidth configuration`，旧上限不变。
+`GET /api/admin/overview` 返回的 `bandwidth.totalMbps` 是服务端最近 5 秒媒体入口与出口之和。
+窗口精度为 100 毫秒。超过上限时 `blocked` 为 true，等于上限不阻止接入。
+
+创建会议、会议详情预检和 WSS 握手被策略拒绝时，返回：
+
+```http
+HTTP/1.1 503 Service Unavailable
+Retry-After: 5
+X-WebZoom-Error: bandwidth_limit
+
+bandwidth limit exceeded
+```
+
+前端使用专用错误头识别此状态，不把其他 503 错误当作带宽超限。
+会议接入每 5 秒重新预检，流量回落后恢复连接。这些等待不占普通重连次数。
+已有连接不被断开，已有会议操作和管理员接口不受接入限制。
+此规则不保证当前流量低于上限，不替代网络层限速。
+持久卷和启动优先级见 `DEPLOYMENT.md`。
 
 ## WSS 控制消息
 

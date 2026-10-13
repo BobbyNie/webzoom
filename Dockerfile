@@ -20,11 +20,15 @@ COPY cmd/webzoom/ ./cmd/webzoom/
 COPY internal/ ./internal/
 RUN go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /webzoom ./cmd/webzoom
 
+RUN mkdir -p /runtime/data && chown 65532:0 /runtime/data && chmod 2770 /runtime/data
+
 FROM scratch
 COPY --from=backend /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=backend --chmod=0555 /webzoom /app/webzoom
 COPY --from=frontend /src/web/dist /app/web
-ENV LISTEN_ADDR=:8080 STATIC_DIR=/app/web
+# Copy the parent tree to retain the data directory mode, including setgid.
+COPY --from=backend --chown=65532:0 /runtime/ /
+ENV LISTEN_ADDR=:8080 STATIC_DIR=/app/web BANDWIDTH_CONFIG_FILE=/data/bandwidth.json
 USER 65532:65532
 COPY LICENSE THIRD_PARTY_NOTICES.md /app/licenses/
 COPY licenses/ /app/licenses/
