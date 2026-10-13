@@ -7,8 +7,9 @@ type Props={state:AnnotationState;user:User;owner:boolean;allowed:boolean;active
 type Draft={id:string;color:string;points:Point[];pending:Point[];segment:number;finished:boolean;finalSegment?:number};
 export default function Annotations({state,user,owner,allowed,active,width,height,errorVersion,send}:Props){
  const [tool,setTool]=useState<'view'|'pen'|'pointer'>('view'),[color,setColor]=useState(annotationColors[0]);
- const [draft,setDraft]=useState<Draft|null>(null),[box,setBox]=useState({width:0,height:0}),[now,setNow]=useState(Date.now()),[hint,setHint]=useState('');
+ const [draft,setDraft]=useState<Draft|null>(null),[completed,setCompleted]=useState<Draft[]>([]),[box,setBox]=useState({width:0,height:0}),[now,setNow]=useState(Date.now()),[hint,setHint]=useState('');
  const area=useRef<HTMLDivElement>(null),live=useRef({state,send,active,allowed,tool,color}),draftRef=useRef<Draft|null>(null);
+ const completedRef=useRef<Draft[]>([]);
  const pointing=useRef<Point|null>(null),pointerDirty=useRef(false),lastPointer=useRef(0);
  live.current={state,send,active,allowed,tool,color};
  const canUse=active&&allowed&&width>0&&height>0;
@@ -18,26 +19,26 @@ export default function Annotations({state,user,owner,allowed,active,width,heigh
   const observer=new ResizeObserver(measure);observer.observe(node);return()=>observer.disconnect();
  },[]);
  useEffect(()=>{
-  draftRef.current=null;setDraft(null);pointing.current=null;pointerDirty.current=false;
+  draftRef.current=null;setDraft(null);completedRef.current=[];setCompleted([]);pointing.current=null;pointerDirty.current=false;
   if(!active||!allowed)setTool('view');
  },[state.epoch,state.generation,active,allowed,errorVersion]);
  useEffect(()=>{pointing.current=null;pointerDirty.current=true;draftRef.current=null;setDraft(null)},[tool]);
  useEffect(()=>{
-  const current=draftRef.current;
-  if(current?.finished&&current.finalSegment!==undefined&&state.strokes.some(s=>s.id===current.id&&s.user.id===user.id&&s.segment>=current.finalSegment!)){
-   draftRef.current=null;setDraft(null);
-  }
- },[state.strokes,user.id,draft?.finished,draft?.finalSegment]);
+  const remaining=completedRef.current.filter(stroke=>stroke.pending.length>0||stroke.finalSegment===undefined||!state.strokes.some(s=>s.id===stroke.id&&s.user.id===user.id&&s.segment>=stroke.finalSegment!));
+  if(remaining.length!==completedRef.current.length){completedRef.current=remaining;setCompleted([...remaining])}
+ },[state.strokes,user.id,completed]);
  useEffect(()=>{
   const timer=setInterval(()=>{
    setNow(Date.now());
    const current=live.current;if(!current.active||!current.allowed)return;
-   const stroke=draftRef.current;
+   // Drain completed gestures first, retaining the existing one-command/100 ms budget.
+   const stroke=completedRef.current.find(s=>s.pending.length>0)??draftRef.current;
    if(stroke?.pending.length){
     const points=stroke.pending.splice(0,16),segment=stroke.segment++;
     if(stroke.finished&&!stroke.pending.length)stroke.finalSegment=segment;
     current.send({kind:'draw',epoch:current.state.epoch,generation:current.state.generation,strokeId:stroke.id,color:stroke.color,segment,points});
-    setDraft({...stroke,points:[...stroke.points]});
+    if(stroke===draftRef.current)setDraft({...stroke,points:[...stroke.points]});
+    else setCompleted([...completedRef.current]);
    }else if(pointerDirty.current||(current.tool==='pointer'&&pointing.current&&Date.now()-lastPointer.current>=700)){
     pointerDirty.current=false;lastPointer.current=Date.now();
     current.send({kind:'pointer',epoch:current.state.epoch,generation:current.state.generation,color:current.color,points:pointing.current?[pointing.current]:[]});
@@ -62,6 +63,7 @@ export default function Annotations({state,user,owner,allowed,active,width,heigh
   event.preventDefault();setHint('');
   if(tool==='pointer'){pointing.current=p;pointerDirty.current=true;return}
   if(draftRef.current)return;
+  if(completedRef.current.length>=8){setHint('网络确认较慢，请稍候再绘制。');return}
   event.currentTarget.setPointerCapture(event.pointerId);
   const next:Draft={id:crypto.randomUUID(),color,points:[p],pending:[p],segment:0,finished:false};
   draftRef.current=next;setDraft({...next});
@@ -76,12 +78,17 @@ export default function Annotations({state,user,owner,allowed,active,width,heigh
   if(tool!=='pen')return;
   const p=point(event);if(p)append(p);
   const current=draftRef.current;
-  if(current){current.finished=true;current.finalSegment=current.pending.length?undefined:current.segment-1;setDraft({...current})}
+  if(current){
+   current.finished=true;current.finalSegment=current.pending.length?undefined:current.segment-1;
+   completedRef.current.push(current);setCompleted([...completedRef.current]);
+   // A finished gesture must not own the pointer while awaiting its server echo.
+   draftRef.current=null;setDraft(null);
+  }
   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);
  }
  const visible=videoRect(box.width,box.height,width,height);
  const strokes=state.strokes;
- const clear=(kind:string)=>{draftRef.current=null;setDraft(null);send({kind,epoch:state.epoch,generation:state.generation})};
+ const clear=(kind:string)=>{draftRef.current=null;setDraft(null);completedRef.current=[];setCompleted([]);send({kind,epoch:state.epoch,generation:state.generation})};
  const path=(points:Point[])=>points.map(p=>`${p.x*1000},${p.y*1000}`).join(' ');
  function line(id:string,points:Point[],strokeColor:string){
   return points.length===1?<circle key={id} cx={points[0].x*1000} cy={points[0].y*1000} r="2" fill={strokeColor} vectorEffect="non-scaling-stroke"/>:
@@ -94,7 +101,7 @@ export default function Annotations({state,user,owner,allowed,active,width,heigh
     onPointerDown={down} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish}
     onPointerLeave={()=>{if(tool==='pointer'){pointing.current=null;pointerDirty.current=true}}}>
     <g data-testid="annotation-strokes">{strokes.map(s=>line(`${s.user.id}:${s.id}`,s.points,s.color))}</g>
-    {draft&&line('local-draft',draft.points,draft.color)}
+    <g data-testid="annotation-pending">{completed.map(s=>line(`pending:${s.id}`,s.points,s.color))}{draft&&line('local-draft',draft.points,draft.color)}</g>
    </svg>
    {Object.values(state.pointers??{}).filter(p=>now-p.updatedAt<1800).map(p=><span key={p.user.id} className="annotation-pointer" data-testid="annotation-pointer" style={{left:visible.left+p.point.x*visible.width,top:visible.top+p.point.y*visible.height,color:p.color}}><span className="pointer-symbol">➤</span><span className="pointer-name">{p.user.name}</span></span>)}
    <div className="annotation-toolbar" aria-label="屏幕批注工具">

@@ -51,3 +51,38 @@ test('annotations work in fullscreen; new share clears strokes without granting 
   await expect(guest.getByRole('button',{name:'画笔',exact:true})).toHaveCount(0);await expect(owner.getByRole('button',{name:'画笔',exact:true})).toBeVisible();
  }finally{await c1.close();await c2.close()}
 });
+
+
+test('a finished stroke does not block the next gesture while draw acknowledgements are delayed',async({browser})=>{
+ const c1=await browser.newContext({ignoreHTTPSErrors:true}),c2=await browser.newContext({ignoreHTTPSErrors:true});
+ const owner=await c1.newPage(),guest=await c2.newPage();let releaseAcknowledgements=()=>{};
+ await guest.routeWebSocket(/\/api\/rooms\/[^/]+\/ws$/,socket=>{
+  const server=socket.connectToServer();const pending:(string|Buffer)[]=[];let hold=true;
+  server.onMessage(message=>{
+   if(hold&&typeof message==='string'){
+    const event=JSON.parse(message);
+    if(event.type==='annotation'&&event.annotation?.kind==='draw'){pending.push(message);return}
+   }
+   socket.send(message);
+  });
+  socket.onMessage(message=>server.send(message));
+  releaseAcknowledgements=()=>{hold=false;for(const message of pending)socket.send(message);pending.length=0};
+ });
+ try{
+  await fakeScreen(owner);await login(owner,'DelayedAnnotationOwner');await owner.getByRole('button',{name:'创建会议',exact:true}).click();await expect(owner).toHaveURL(/\/m\//);const link=owner.url();
+  await owner.getByRole('button',{name:'共享屏幕',exact:true}).click();await login(guest,'DelayedAnnotationGuest');await guest.goto(link);
+  await expect.poll(async()=>Number(await guest.getByTestId('frames').textContent())).toBeGreaterThan(0);
+  await owner.getByRole('button',{name:'允许 DelayedAnnotationGuest 批注',exact:true}).click();
+  await draw(guest);await expect(strokes(owner)).toHaveCount(1);await expect(strokes(guest)).toHaveCount(0);
+  await draw(guest);await expect(strokes(owner)).toHaveCount(2);await expect(strokes(guest)).toHaveCount(0);
+  await expect(guest.getByTestId('annotation-pending').locator('polyline,circle')).toHaveCount(2);
+  // Hold all echoes: accepted gestures remain bounded instead of silently dropping or growing forever.
+  for(let i=0;i<6;i++)await draw(guest);
+  await expect(strokes(owner)).toHaveCount(8);await draw(guest);
+  await expect(guest.getByRole('status')).toHaveText('网络确认较慢，请稍候再绘制。');
+  await expect(guest.getByTestId('annotation-pending').locator('polyline,circle')).toHaveCount(8);
+  releaseAcknowledgements();await expect(strokes(guest)).toHaveCount(8);
+  await expect(guest.getByTestId('annotation-pending').locator('polyline,circle')).toHaveCount(0);
+  await draw(guest);await expect(strokes(owner)).toHaveCount(9);await expect(strokes(guest)).toHaveCount(9);
+ }finally{await c1.close();await c2.close()}
+});
