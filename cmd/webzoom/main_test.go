@@ -54,3 +54,22 @@ func TestLoadTestLimitsDefaultDisabledAndValidate(t *testing.T) {
 		}
 	}
 }
+
+func TestBandwidthStartupLimit(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  int
+		bad   bool
+	}{
+		{"", 200, false}, {"1", 1, false}, {"500", 500, false}, {"1000000", 1000000, false},
+		{"0", 0, true}, {"-1", 0, true}, {"abc", 0, true}, {"1.5", 0, true}, {"1000001", 0, true},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			t.Setenv("TOTAL_BANDWIDTH_LIMIT_MBPS", tc.value)
+			got, err := bandwidthLimit()
+			if (err != nil) != tc.bad || got != tc.want {
+				t.Fatal(got, err)
+			}
+		})
+	}
+}

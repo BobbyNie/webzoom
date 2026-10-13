@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 	"webzoom/internal/auth"
+	"webzoom/internal/bandwidth"
 	"webzoom/internal/media"
 	"webzoom/internal/meeting"
 )
@@ -66,6 +67,7 @@ func New(c Config) http.Handler {
 		reply(w, 200, a.Hub.Overview())
 	}))
 	mux.HandleFunc("POST /api/admin/rooms/end", a.administrator(a.endRooms))
+	mux.HandleFunc("POST /api/admin/bandwidth", a.administrator(a.setBandwidth))
 	mux.HandleFunc("GET /api/me", a.secure(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		reply(w, 200, map[string]any{"user": s.User, "csrf": s.CSRF, "expiresAt": s.ExpiresAt})
 	}))
@@ -83,6 +85,10 @@ func New(c Config) http.Handler {
 	mux.HandleFunc("GET /api/rooms/{id}", a.secure(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		room, e := a.Hub.Get(r.PathValue("id"))
 		if e != nil {
+			fail(w, e)
+			return
+		}
+		if e := a.Hub.CheckAdmission(); e != nil {
 			fail(w, e)
 			return
 		}
@@ -128,6 +134,12 @@ func reply(w http.ResponseWriter, status int, v any) {
 func fail(w http.ResponseWriter, e error) {
 	status := 400
 	switch {
+	case errors.Is(e, meeting.ErrBandwidth):
+		status = http.StatusServiceUnavailable
+		w.Header().Set("Retry-After", "5")
+		w.Header().Set("X-WebZoom-Error", "bandwidth_limit")
+	case errors.Is(e, bandwidth.ErrSave):
+		status = http.StatusServiceUnavailable
 	case errors.Is(e, meeting.ErrNotFound):
 		status = 404
 	case errors.Is(e, meeting.ErrForbidden):

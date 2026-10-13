@@ -8,12 +8,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"webzoom/internal/bandwidth"
 	"webzoom/internal/media"
 )
 
 var ErrNotFound = errors.New("meeting not found or expired")
 var ErrForbidden = errors.New("operation not permitted")
 var ErrCapacity = errors.New("capacity reached")
+var ErrBandwidth = errors.New("bandwidth limit exceeded")
 var ErrConflict = errors.New("already connected or invalid meeting state")
 
 type User struct {
@@ -56,11 +58,14 @@ type room struct {
 	windowBytes                                int
 }
 type Config struct {
+	BandwidthLimitMbps   int
+	SaveBandwidthLimit   func(int) error
 	Now                  func() time.Time
 	MaxRooms, MaxViewers int // Positive values enable load-test limits; zero disables them.
 }
 type Metrics struct{ Ingress, Egress, Dropped, Degraded atomic.Uint64 }
 type Hub struct {
+	bandwidth  *bandwidth.Limiter
 	instanceID string
 	startedAt  time.Time
 	mu         sync.Mutex
@@ -73,7 +78,7 @@ func New(c Config) *Hub {
 	if c.Now == nil {
 		c.Now = time.Now
 	}
-	return &Hub{instanceID: token(), startedAt: c.Now(), rooms: make(map[string]*room), cfg: c}
+	return &Hub{bandwidth: bandwidth.New(c.BandwidthLimitMbps, c.SaveBandwidthLimit), instanceID: token(), startedAt: c.Now(), rooms: make(map[string]*room), cfg: c}
 }
 func token() string {
 	b := make([]byte, 24)
@@ -86,6 +91,9 @@ func (h *Hub) Create(u User) (Snapshot, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.sweep()
+	if err := h.CheckAdmission(); err != nil {
+		return Snapshot{}, err
+	}
 	if h.cfg.MaxRooms > 0 && len(h.rooms) >= h.cfg.MaxRooms {
 		return Snapshot{}, ErrCapacity
 	}
@@ -149,6 +157,9 @@ func (h *Hub) Join(id string, u User, session string) (*Peer, error) {
 	r, e := h.room(id)
 	if e != nil {
 		return nil, e
+	}
+	if err := h.CheckAdmission(); err != nil {
+		return nil, err
 	}
 	if r.peers[u.ID] != nil {
 		return nil, ErrConflict
@@ -357,6 +368,7 @@ func (h *Hub) Publish(p *Peer, data []byte) error {
 	}
 	r.hasSequence = true
 	r.lastSequence = f.Sequence
+	h.bandwidth.Record(now, uint64(len(data)))
 	h.Metrics.Ingress.Add(uint64(len(data)))
 	r.traffic.ingress.Add(uint64(len(data)))
 	needKey := false
