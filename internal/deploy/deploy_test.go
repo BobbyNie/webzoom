@@ -31,7 +31,7 @@ import (
 	"webzoom/internal/server"
 )
 
-const nginxImage = "nginxinc/nginx-unprivileged:stable-alpine@sha256:15c994d10d6d78658721c3bcafff14cb281fba2a4bdf9d5ba92c416a472516e3"
+const nginxImage = "webzoom-proxy:local"
 
 func docker(t *testing.T, args ...string) string {
 	t.Helper()

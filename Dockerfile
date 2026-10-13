@@ -1,12 +1,18 @@
 # syntax=docker/dockerfile:1
-FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS frontend
+FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS frontend
+RUN apk add --no-cache 'zlib>=1.3.2-r1' && npm install --global npm@12.2.0 && npm cache clean --force
+# Replace bundled npm dependencies with the audited, integrity-locked upstream packages.
+COPY .github/security/npm/package.json .github/security/npm/package-lock.json /usr/local/lib/node_modules/npm/
+RUN npm ci --prefix /usr/local/lib/node_modules/npm --ignore-scripts && npm cache clean --force
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
 RUN npm test && npm run build
 
-FROM golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c AS backend
+FROM golang:1.26.9-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS backend
+RUN apk add --no-cache 'zlib>=1.3.2-r1'
+ENV CGO_ENABLED=0
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -22,7 +28,6 @@ ENV LISTEN_ADDR=:8080 STATIC_DIR=/app/web
 USER 65532:65532
 COPY LICENSE THIRD_PARTY_NOTICES.md /app/licenses/
 COPY licenses/ /app/licenses/
-COPY --from=backend /usr/share/doc/ca-certificates/copyright /app/licenses/ca-certificates.txt
 WORKDIR /app
 EXPOSE 8080
 ENTRYPOINT ["/app/webzoom"]

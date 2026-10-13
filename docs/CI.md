@@ -22,6 +22,7 @@
 
 检查包括 Go race、go vet、govulncheck、前端测试、生产构建、npm audit、
 Chromium 测试、容器测试、Compose 配置和工作流策略测试。
+构建工具 npm 使用独立的完整性锁文件，其依赖也执行 `npm audit --audit-level=low`。
 这不是目标 OpenShift 集群验收，也不是正式容量验收。
 旧 GHCR 镜像不自动删除。新流程不再向 GHCR 发布。
 
@@ -137,9 +138,36 @@ python3 -m venv /tmp/webzoom-workflow-venv
 /tmp/webzoom-workflow-venv/bin/python -m unittest discover -s .github/tests -v
 go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
 docker build -t webzoom:local .
+docker build -f Dockerfile.proxy -t webzoom-proxy:local .
 go test -count=1 -tags deploymenttests -v ./internal/deploy
 ```
 
 版本分配、发布权限、错误保护和重跑行为使用测试驱动开发。
 测试覆盖版本排序、旧提交拒绝、标签冲突、annotated tag、摘要校验和已发布版本的只读重跑。
 容器测试验证已有的非 root 运行能力，不代表已经在真实 OpenShift 集群运行。
+
+## 7. CVE 发布检查
+
+CVE 是公开漏洞的统一编号。Trivy 固定为 `0.75.0`。安装脚本先校验固定 SHA-256，再运行工具。
+CI 扫描实际 Linux/AMD64 镜像，不用本机 ARM64 扫描替代发布检查。
+
+| 扫描对象 | 本地标签 | 是否发布到 Docker Hub |
+|---|---|---|
+| 应用最终镜像 | `webzoom:local` | 是 |
+| 前端构建阶段 | `webzoom:frontend` | 否 |
+| 后端构建阶段 | `webzoom:backend` | 否 |
+| 已修复的代理 | `webzoom-proxy:local` | 否；Compose 单独构建 |
+
+扫描包含 UNKNOWN、LOW、MEDIUM、HIGH 和 CRITICAL。它不忽略无补丁记录。
+扫描不加载隐式工作目录配置或漏洞忽略文件。扫描使用当前数据库，不跳过更新。
+发现漏洞、工具运行失败或数据库下载失败均阻止镜像导出和发布。
+某个镜像扫描失败后，脚本继续检查其他镜像，最后返回失败。
+应用镜像必须同时通过容器功能测试和漏洞检查。发布任务不重新构建它。
+
+工作流无论扫描成功或失败都尝试上传 `security-reports`，保留 14 天。
+扫描安装失败时可能没有报告，日志会记录安装错误。
+
+独立测试 Keycloak 不在应用发布的零发现门槛中，也不进入应用镜像。
+其官方重建镜像仍有已知 CVE，不能把此门槛称为“全部测试环境无漏洞”。
+完整检查结果、构建工具依赖处理、剩余风险和重现命令见 `docs/SECURITY.md`。
+生产 Keycloak、运行节点、网关和浏览器须由组织另行检查。

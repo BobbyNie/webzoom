@@ -6,6 +6,7 @@ WebZoom 是内网屏幕共享服务。浏览器只连接 HTTPS 和 WSS。
 **当前状态：首版核心功能和本机自动化验证已完成。生产容量验收尚未完成。**
 不要把本机测试结果视为“1000 名听众持续 30 分钟”的承诺。
 完整结果和剩余验收项见 `docs/VERIFICATION.md`。
+安全扫描结果、修复范围和测试 Keycloak 剩余风险见 [安全报告](docs/SECURITY.md)。
 
 ## 已实现
 
@@ -13,7 +14,7 @@ WebZoom 是内网屏幕共享服务。浏览器只连接 HTTPS 和 WSS。
 - 任意已登录用户创建会议，复制链接，并邀请同事。
 - 首页列出“我创建的会议”。主持人可直接进入、复制链接或结束会议。
 - 默认不限制会议数量或听众人数。普通会议页面不显示会议数量或登录人数统计。
-- 独立 `/admin` 只读总览：有效会议、参与人数、每场及全局媒体流量。通过 `ADMIN_USER_IDS` 配置多个管理员。
+- 独立 `/admin` 管理页面：有效会议、参与人数、每场及全局媒体流量。管理员可以批量结束选定会议。通过 `ADMIN_USER_IDS` 配置多个管理员。
 - 固定主持人。主持人可以转交共享权、收回共享权和结束会议。
 - 每场会议只有一名共享者。新共享者必须主动选择屏幕。
 - WebCodecs VP8 编码和解码。服务仅转发压缩画面。
@@ -136,6 +137,8 @@ GitHub Actions 对拉取请求执行检查。`main` 分支通过检查后，自�
 发布到 Docker Hub `bobbynie/webzoom`，并创建对应的 GitHub Release。
 首次自动版本为 `v0.1.0`。后续自动版本递增补丁号。也支持手动稳定版本标签。
 首次发布架构为 `linux/amd64`。发布任务使用已经通过容器测试的同一个镜像，不重新构建。
+发布前扫描实际应用、两个构建阶段和代理镜像。发现任意级别漏洞或扫描失败均阻止发布。
+此门槛不包含独立测试 Keycloak。其剩余风险单独记录在安全报告中。
 发布任务使用名为 `DOCKERHUB_USERNAME` 的 GitHub Environment。
 在该环境中配置 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN` 两个 Secret。
 Docker Hub 与 GitHub 的账号关联不能代替这两个发布凭据。
@@ -165,6 +168,7 @@ npm run test:e2e
 ```sh
 # 从仓库根目录执行。先构建镜像，再运行临时容器测试。
 docker build -t webzoom:local .
+docker build -f Dockerfile.proxy -t webzoom-proxy:local .
 go test -tags deploymenttests -v ./internal/deploy
 
 # 可选：10 秒、1000 名模拟听众、本机 TLS/WSS 转发试验。
@@ -184,6 +188,8 @@ go build -o bin/loadtest ./cmd/loadtest
 - `docs/VERIFICATION.md`：已执行测试、结果和未验证项目。
 - `docs/ANNOTATIONS.md`：主持人授权的共享画面画笔、署名指示和验收边界。
 - `docs/ANNOTATION_UAT.md`：副分支测试镜像交付、OCP UAT 验收和回退。
+- `docs/SECURITY.md`：CVE 检查、修复、剩余风险和扫描命令。
+- `docs/CI.md`：发布凭据、自动版本、漏洞门槛和镜像摘要。
 - `THIRD_PARTY_NOTICES.md`：依赖、许可证和检查边界。
 
 ## 管理员页面
@@ -191,3 +197,16 @@ go build -o bin/loadtest ./cmd/loadtest
 部署时设置 `ADMIN_USER_IDS=first-user-sub,second-user-sub`，然后访问 `/admin`。
 值必须为当前 OIDC 签发者提供的用户 `sub`，不是用户名。默认空值不给任何用户管理员权限。
 获取用户 ID、Docker/OpenShift 配置和指标定义见 `docs/DEPLOYMENT.md` 的“独立管理员总览”。
+
+**警告：结束会议会断开所有参与者连接，并使原链接失效。此操作不能撤销。**
+
+1. 使用已配置的管理员账号登录。
+2. 打开 `/admin`。
+3. 勾选需要结束的会议，或选择“全选当前会议”。
+4. 点击“批量结束会议”。
+5. 检查确认框内的会议 ID。
+6. 点击“确认结束选定会议”。
+7. 检查逐项结果。若存在未确认结果，先检查刷新后的列表，再重试。
+
+轮询新增的会议不会自动加入选择。单次请求最多包含 100 场会议，页面会自动分批。
+此请求保护不限制服务的会议总数或参与人数。普通用户仍只能结束自己创建的会议。
