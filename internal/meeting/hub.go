@@ -51,6 +51,7 @@ type Peer struct {
 	Reason            string
 }
 type room struct {
+	overlay     *Overlay
 	annotations annotationRoom
 	annotators  map[string]bool
 	traffic     traffic
@@ -195,6 +196,7 @@ func (h *Hub) broadcast(r *room) {
 	}
 }
 func (h *Hub) reset(r *room) {
+	closeOverlay(r)
 	r.annotations = annotationRoom{}
 	r.Epoch++
 	r.Active = false
@@ -273,6 +275,7 @@ func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
 	return snapshot(r), nil
 }
 func (h *Hub) end(r *room, reason string) {
+	closeOverlay(r)
 	for _, p := range r.peers {
 		select {
 		case <-p.Done:

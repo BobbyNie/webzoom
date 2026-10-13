@@ -67,11 +67,13 @@ func annotationSnapshot(r *room) *AnnotationState {
 }
 func (h *Hub) broadcastAnnotations(r *room) {
 	state := annotationSnapshot(r)
+	emitOverlay(r, Event{Type: "annotations", Annotations: state})
 	for _, p := range r.peers {
 		h.emit(p, Event{Type: "annotations", Annotations: state})
 	}
 }
 func (h *Hub) annotationBroadcast(r *room, e AnnotationEvent) {
+	emitOverlay(r, Event{Type: "annotation", Annotation: &e})
 	for _, p := range r.peers {
 		if e.Kind == "pointer" {
 			// Pointers are ephemeral: never disconnect a slow video viewer for a pointer.

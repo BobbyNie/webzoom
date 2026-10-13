@@ -1,7 +1,7 @@
 import {FrameGate,isStale,pack,unpack,type WireFrame,MAX_FRAME} from './protocol';
 import {Adaptation,profiles} from './quality';
 
-export const screenConstraints:DisplayMediaStreamOptions={audio:false,video:{width:{max:1920},height:{max:1080},frameRate:{max:30}},systemAudio:'exclude'};
+export const screenConstraints:DisplayMediaStreamOptions={audio:false,video:{width:{max:1920},height:{max:1080},frameRate:{max:30}},systemAudio:'exclude',surfaceSwitching:'exclude'};
 export async function captureScreen(devices:MediaDevices=navigator.mediaDevices):Promise<MediaStream>{
  const stream=await devices.getDisplayMedia(screenConstraints);
  if(stream.getAudioTracks().length){stream.getTracks().forEach(t=>t.stop());throw new Error('浏览器返回了音频轨道。共享已停止。');}

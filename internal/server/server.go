@@ -25,6 +25,7 @@ type Config struct {
 	AdminUserIDs            string
 }
 type app struct {
+	overlay overlayTickets
 	Config
 	admins map[string]bool
 }
@@ -90,6 +91,9 @@ func New(c Config) http.Handler {
 	}))
 	mux.HandleFunc("POST /api/rooms/{id}/actions", a.secure(a.action))
 	mux.HandleFunc("GET /api/rooms/{id}/ws", a.secure(a.socket))
+	mux.HandleFunc("POST /api/rooms/{id}/overlay", a.secure(a.pairOverlay))
+	mux.HandleFunc("DELETE /api/rooms/{id}/overlay", a.secure(a.stopOverlay))
+	mux.HandleFunc("GET /api/overlay/ws", a.overlaySocket)
 	mux.HandleFunc("GET /metrics", a.metrics)
 	mux.HandleFunc("GET /", a.static)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

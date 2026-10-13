@@ -1,5 +1,7 @@
 # 批注功能：副分支测试镜像与 OCP UAT
 
+> 原屏幕批注新实验版：请先读 [Windows 助手交付说明](PRESENTER_OVERLAY.md)。它使用 `feature/presenter-overlay` 和独立 Windows 附件；本文原来的副分支状态描述属于纯网页批注阶段，不代表新助手已在 OCP 验收。
+
 ## 交付状态（2026-10-13）
 
 - 功能与本地回归测试完成，代码位于 `feature/screen-annotation`。
