@@ -99,8 +99,15 @@ func waitHealthy(t *testing.T, client *http.Client, url string) {
 	}
 	t.Fatal("service did not become ready")
 }
+func applicationImage() string {
+	if image := os.Getenv("WEBZOOM_TEST_IMAGE"); image != "" {
+		return image
+	}
+	return "webzoom:local"
+}
+
 func TestReadOnlyImageWithDefaultNonRootUID(t *testing.T) {
-	if user := docker(t, "image", "inspect", "webzoom:local", "--format", "{{.Config.User}}"); user != "65532:65532" {
+	if user := docker(t, "image", "inspect", applicationImage(), "--format", "{{.Config.User}}"); user != "65532:65532" {
 		t.Fatalf("image must default to numeric non-root UID/GID, got %q", user)
 	}
 	checkReadOnlyImage(t, nil)
@@ -127,7 +134,10 @@ func checkReadOnlyImage(t *testing.T, user []string) {
 	provider.TLS = &tls.Config{Certificates: []tls.Certificate{pair}}
 	provider.StartTLS()
 	defer provider.Close()
-	args := append(user, "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--add-host", "example.com:host-gateway", "-p", "127.0.0.1::8080", "-v", dir+":/trust:ro", "-e", "SSL_CERT_FILE=/trust/fullchain.pem", "-e", "PUBLIC_URL=https://webzoom.example.test", "-e", "OIDC_ISSUER="+issuer, "-e", "OIDC_CLIENT_ID=fixture", "-e", "OIDC_CLIENT_SECRET=test-only", "webzoom:local")
+	volume := fmt.Sprintf("webzoom-policy-test-%d", time.Now().UnixNano())
+	docker(t, "volume", "create", volume)
+	t.Cleanup(func() { docker(t, "volume", "rm", volume) })
+	args := append(user, "-v", volume+":/data", "-e", "TOTAL_BANDWIDTH_LIMIT_MBPS=175", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--add-host", "example.com:host-gateway", "-p", "127.0.0.1::8080", "-v", dir+":/trust:ro", "-e", "SSL_CERT_FILE=/trust/fullchain.pem", "-e", "PUBLIC_URL=https://webzoom.example.test", "-e", "OIDC_ISSUER="+issuer, "-e", "OIDC_CLIENT_ID=fixture", "-e", "OIDC_CLIENT_SECRET=test-only", applicationImage())
 	name := container(t, args...)
 	url := "http://127.0.0.1:" + port(t, name, "8080/tcp")
 	waitHealthy(t, http.DefaultClient, url)
@@ -148,6 +158,19 @@ func checkReadOnlyImage(t *testing.T, user []string) {
 	if res.StatusCode != 200 || !strings.Contains(string(body), "WebZoom") {
 		t.Fatal("bundled frontend unavailable")
 	}
+	checkSavedBandwidth(t, name, 175)
+	docker(t, "stop", name)
+	// A new, unrelated UID must read the prior policy using the volume's group.
+	restartArgs := append([]string{"--user", "1001230001:0"}, args[len(user):]...)
+	for i, v := range restartArgs {
+		if v == "TOTAL_BANDWIDTH_LIMIT_MBPS=175" {
+			restartArgs[i] = "TOTAL_BANDWIDTH_LIMIT_MBPS=999"
+		}
+	}
+	restarted := container(t, restartArgs...)
+	waitHealthy(t, http.DefaultClient, "http://127.0.0.1:"+port(t, restarted, "8080/tcp"))
+	checkSavedBandwidth(t, restarted, 175)
+
 }
 func TestHTTPSProxyCarriesAuthenticatedBinaryWSS(t *testing.T) {
 	dir, client, _ := certificates(t)
@@ -245,5 +268,21 @@ func TestComposeLoadTestLimitsAreDisabledByDefaultAndOptIn(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func checkSavedBandwidth(t *testing.T, container string, want int) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "policy.json")
+	docker(t, "cp", container+":/data/bandwidth.json", path)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config struct {
+		LimitMbps int `json:"limitMbps"`
+	}
+	if err = json.Unmarshal(b, &config); err != nil || config.LimitMbps != want {
+		t.Fatalf("saved policy=%s err=%v", b, err)
 	}
 }

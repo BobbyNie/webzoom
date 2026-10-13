@@ -18,3 +18,5 @@ artifacts/
 __pycache__/
 *.pyc
 /test-results/
+
+.data/

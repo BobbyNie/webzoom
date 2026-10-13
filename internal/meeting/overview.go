@@ -4,6 +4,7 @@ import (
 	"sort"
 	"sync/atomic"
 	"time"
+	"webzoom/internal/bandwidth"
 )
 
 type traffic struct{ ingress, egress atomic.Uint64 }
@@ -19,12 +20,13 @@ type RoomOverview struct {
 }
 
 type Overview struct {
-	InstanceID   string         `json:"instanceId"`
-	SampledAt    time.Time      `json:"sampledAt"`
-	StartedAt    time.Time      `json:"startedAt"`
-	IngressBytes uint64         `json:"ingressBytes"`
-	EgressBytes  uint64         `json:"egressBytes"`
-	Rooms        []RoomOverview `json:"rooms"`
+	Bandwidth    bandwidth.Status `json:"bandwidth"`
+	InstanceID   string           `json:"instanceId"`
+	SampledAt    time.Time        `json:"sampledAt"`
+	StartedAt    time.Time        `json:"startedAt"`
+	IngressBytes uint64           `json:"ingressBytes"`
+	EgressBytes  uint64           `json:"egressBytes"`
+	Rooms        []RoomOverview   `json:"rooms"`
 }
 
 // Overview is read-only. Counts exclude expired meetings and closing connections.
@@ -33,7 +35,7 @@ func (h *Hub) Overview() Overview {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	now := h.cfg.Now()
-	o := Overview{InstanceID: h.instanceID, SampledAt: now, StartedAt: h.startedAt, IngressBytes: h.Metrics.Ingress.Load(), EgressBytes: h.Metrics.Egress.Load(), Rooms: make([]RoomOverview, 0)}
+	o := Overview{Bandwidth: h.BandwidthStatus(), InstanceID: h.instanceID, SampledAt: now, StartedAt: h.startedAt, IngressBytes: h.Metrics.Ingress.Load(), EgressBytes: h.Metrics.Egress.Load(), Rooms: make([]RoomOverview, 0)}
 	for _, r := range h.rooms {
 		if !now.Before(r.ExpiresAt) || (!r.emptyAt.IsZero() && now.Sub(r.emptyAt) >= 30*time.Minute) {
 			continue
@@ -58,6 +60,7 @@ func (h *Hub) RecordEgress(p *Peer, size int) {
 	if size <= 0 {
 		return
 	}
+	h.bandwidth.Record(h.cfg.Now(), uint64(size))
 	p.traffic.egress.Add(uint64(size))
 	h.Metrics.Egress.Add(uint64(size))
 }

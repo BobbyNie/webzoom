@@ -42,8 +42,12 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 15
           volumeMounts:
+            - {name: app-data, mountPath: /data}
             - {name: trusted-ca, mountPath: /etc/webzoom/trust, readOnly: true}
       volumes:
+        - name: app-data
+          persistentVolumeClaim:
+            claimName: webzoom-data
         - name: trusted-ca
           configMap:
             name: webzoom-trusted-ca

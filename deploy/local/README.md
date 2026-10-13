@@ -93,6 +93,18 @@ Keycloak 使用内存数据库。它重启后会重新导入测试账号。
 WebZoom 重启后会议和应用会话失效。参加会议的共享者和听众会自动续期。
 续期仍受 Keycloak 期限和应用登录 8 小时绝对上限约束。闲置首页不会无限续期。
 
+### 总流量设置保存
+
+本机 Compose 把 `app-data` 命名卷挂载到 `/data`。
+初始值由 `TOTAL_BANDWIDTH_LIMIT_MBPS` 指定，默认 200 Mbps。
+管理员在 `/admin` 保存的上限写入 `/data/bandwidth.json`，容器重启后保留。
+已有文件时，保存值优先于启动环境变量。会议和登录会话仍在重启后失效。
+
+不要执行 `docker compose -f deploy/local/compose.yaml down -v`，否则保存值会被删除。
+不增加管理员时，`ADMIN_USER_IDS` 仍为空，测试账号没有管理员权限。
+配置管理员必须填写实际 OIDC 用户 ID，不要填写 `alice` 或 `bob`。
+权限、计量规则和恢复步骤见 `../../docs/DEPLOYMENT.md`。
+
 ## 3. 自动化验证
 
 必要条件：按项目开发说明安装前端依赖和 Playwright Chromium，并启动本机容器。
@@ -103,9 +115,23 @@ npx playwright test --config playwright.local.config.ts --headed
 ```
 
 此命令不会启动 Go 测试身份服务。它访问已启动的 Docker 环境。
-测试使用真实 Keycloak Authorization Code + PKCE 登录。
-屏幕源为 1920×1080 合成动画，实际执行 VP8 编码、代理 WSS 转发、解码和显示。
-它不读取真实桌面，也不验证操作系统的屏幕选择弹窗。
+套件包含真实 Keycloak 测试和接口模拟测试。两类结果必须分开记录。
+真实登录测试使用 Keycloak Authorization Code + PKCE。
+画面链路测试使用 1920×1080 合成动画。续期测试使用 1280×720、15fps 合成动画。
+两项画面测试实际执行 VP8 编码、代理 WSS 转发、解码和显示。
+它们不读取真实桌面，也不验证操作系统的屏幕选择弹窗。
+续期测试使用真实时间。完整套件需要约六分钟。
+
+只执行真实 Keycloak 的会话续期测试：
+
+```sh
+cd web
+npx playwright test --config playwright.local.config.ts local-tests/session-renewal.spec.ts
+```
+
+共享者和被动听众必须保持连接，直到超过两人的首次登录有效期。
+测试检查自动续期、画面持续更新和原媒体连接保持不变。
+测试只清理自己创建的会议，不删除同一账号的其他会议。
 
 2026-10-09 本机验证：两项测试通过。
 这是当时运行镜像的历史结果，不是 2026-10-12 新 Keycloak digest 的登录验收。
@@ -123,7 +149,39 @@ npx playwright test --config playwright.local.config.ts --headed
 
 2026-10-12 新 Keycloak digest 仅完成漏洞扫描和非 root、只读容器的版本启动检查。
 该检查确认 Keycloak 26.8.0 和 JVM 21.0.12.1 可以启动；它不验证完整登录链路。
-本轮未重启现有 Docker 服务。更新后须重新执行本节的真实 Keycloak 浏览器测试。
+2026-10-12 未重启当时的 Docker 服务。该历史检查不代表完整登录链路通过。
+
+
+### 2026-10-13 更新后的验证
+
+经用户确认，重新构建应用和代理，并重新创建全部本机 WebZoom 容器。
+应用使用已发布修复源码 `6d43fc8`，在本机构建 ARM64 镜像。
+本机未使用 Docker Hub 的 AMD64 发布镜像。
+Keycloak 使用上述固定 digest。可信测试 CA 的 HTTPS 就绪检查通过。
+更新清空了原会议和应用会话。用户需要重新登录。
+
+完整套件 14 项通过，耗时约 5.4 分钟：
+
+- 4 项访问真实 Docker 和 Keycloak，覆盖会议清理隔离、画面链路、采集取消和会话续期。
+- 10 项使用接口模拟，覆盖全屏布局、错误处理和“我创建的会议”页面。
+
+真实画面测试确认听众收到 VP8 画面、浏览器全屏后继续收帧、共享权转交和停止共享。
+观察到 61 个浏览器请求和 2 条 WebSocket 连接，均使用本机 HTTPS/WSS。
+真实时间续期测试持续 306 秒，超过共享者和听众的首次登录有效期。
+两人各完成 1 次自动续期；两人各保持 1 条媒体连接。画面持续更新，未重新采集。
+两个画面测试的页面运行错误均为 0。采集没有音频，也没有请求麦克风或摄像头。
+续期截图为 `artifacts/local/docker-viewer-renewed.png`。
+
+当前没有配置管理员。额外检查确认匿名管理员接口返回 401，普通用户返回 403。
+普通用户打开 `/admin` 显示无权限。本次没有新增管理员，也没有验证真实 Keycloak 管理员操作。
+
+应用和代理实际运行镜像的全部严重级别漏洞扫描均为 0 项。
+测试 Keycloak 仍有 34 个不同 CVE：HIGH 3 个、MEDIUM 19 个、LOW 12 个。
+它只用于隔离本机测试。此结果不表示环境没有漏洞。
+详见 `../../docs/VERIFICATION.md` 的本日记录。
+
+合成画面不代表操作系统屏幕选择器验收。
+本次没有完成生产容量、1080p30 延迟目标或真实 OpenShift 验收。
 
 ## 4. 状态与停止
 

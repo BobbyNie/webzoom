@@ -3,6 +3,8 @@ kind: ConfigMap
 metadata:
   name: webzoom-config
 data:
+  TOTAL_BANDWIDTH_LIMIT_MBPS: "200" # Bootstrap only; saved administrator configuration takes precedence.
+  BANDWIDTH_CONFIG_FILE: /data/bandwidth.json
   ADMIN_USER_IDS: "" # Comma-separated OIDC sub values; empty disables admin access.
   PUBLIC_URL: https://webzoom.apps.example.intranet
   OIDC_ISSUER: https://keycloak.example.intranet/realms/company

@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 	"webzoom/internal/auth"
+	"webzoom/internal/bandwidth"
 	"webzoom/internal/meeting"
 	"webzoom/internal/server"
 )
@@ -55,6 +56,26 @@ func loadTestLimit(name string) (int, error) {
 	}
 	return n, nil
 }
+func bandwidthLimit() (int, error) {
+	n, err := strconv.Atoi(env("TOTAL_BANDWIDTH_LIMIT_MBPS", "200"))
+	if err != nil || !bandwidth.ValidLimit(n) {
+		return 0, fmt.Errorf("TOTAL_BANDWIDTH_LIMIT_MBPS must be an integer between 1 and 1000000")
+	}
+	return n, nil
+}
+
+func loadBandwidthStore() (bandwidth.FileStore, int, error) {
+	store := bandwidth.FileStore{Path: env("BANDWIDTH_CONFIG_FILE", "/data/bandwidth.json")}
+	initial, err := bandwidthLimit()
+	if err != nil {
+		return store, 0, err
+	}
+	limit, err := store.Load(initial)
+	if err == nil {
+		err = store.Save(limit)
+	}
+	return store, limit, err
+}
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -87,6 +108,11 @@ func main() {
 	if maxRooms > 0 || maxViewers > 0 {
 		slog.Warn("load-test capacity limits enabled; do not use for normal deployment", "rooms", maxRooms, "viewers", maxViewers)
 	}
+	store, limit, e := loadBandwidthStore()
+	if e != nil {
+		slog.Error("bandwidth configuration initialization failed; check persistent volume and permissions", "error", e)
+		os.Exit(1)
+	}
 	startup, stop := context.WithTimeout(ctx, 20*time.Second)
 	manager, e := auth.New(startup, auth.Config{PublicURL: os.Getenv("PUBLIC_URL"), Issuer: issuer, ClientID: os.Getenv("OIDC_CLIENT_ID"), ClientSecret: clientSecret})
 	stop()
@@ -94,7 +120,7 @@ func main() {
 		slog.Error("OIDC initialization failed; check issuer, TLS trust and client configuration", "error", e)
 		os.Exit(1)
 	}
-	hub := meeting.New(meeting.Config{MaxRooms: maxRooms, MaxViewers: maxViewers})
+	hub := meeting.New(meeting.Config{MaxRooms: maxRooms, MaxViewers: maxViewers, BandwidthLimitMbps: limit, SaveBandwidthLimit: store.Save})
 	handler := server.New(server.Config{Auth: manager, Hub: hub, StaticDir: env("STATIC_DIR", "web/dist"), MetricsToken: metricsToken, AdminUserIDs: os.Getenv("ADMIN_USER_IDS")})
 	srv := &http.Server{Addr: env("LISTEN_ADDR", ":8080"), Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	go func() {

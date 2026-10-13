@@ -84,6 +84,29 @@ oc rollout history deployment/webzoom -n webzoom-uat
 
 确认没有针对 webzoom 的 HPA。记录旧镜像对应的实际 repository manifest digest，并确认旧版本在 JFrog 仍可拉取。若 Pod `imageID` 是完整 `repo@sha256:...`，可去掉 `docker-pullable://` 等前缀后作为不可变回退地址；不要把仅有的 config ID 当作 manifest digest。只有 tag 的回退依赖该 tag 未被覆盖，更新前先确认。
 
+## C2. 首次升级到包含 v0.1.5 功能的镜像：检查持久存储
+
+本测试版同时包含主分支 `dc1a7ed`（正式版 v0.1.5）的带宽准入功能。该功能启动时必须写入配置文件，默认路径 `/data/bandwidth.json`。旧部署若只有只读根文件系统而没有可写 `/data`，不能只换镜像，否则会启动失败。小窗本身不要求新存储，这是上游 v0.1.5 的要求。
+
+- 如果已部署 v0.1.5 且配置存储正常，保留原卷和路径，不要新建或覆盖它。
+- 如果设置过 `BANDWIDTH_CONFIG_FILE`，应确认它所在目录已有可写持久卷，而不是强制改成 `/data`。检查现有环境时不要打印 Secret 内容。
+- 若没有配置持久存储，在控制台 `webzoom-uat` 中按平台流程创建 `webzoom-data` PVC：1Gi、ReadWriteOnce、使用公司批准的 StorageClass。不要删除或覆盖已有 PVC；无默认 StorageClass、PVC Pending 或无权限时找平台同事处理。
+
+默认路径的检查与挂载示例（PowerShell）：
+
+```powershell
+oc get deployment webzoom -n webzoom-uat -o jsonpath='{.spec.template.spec.containers[?(@.name=="webzoom")].volumeMounts}'
+oc get deployment webzoom -n webzoom-uat -o jsonpath='{.spec.template.spec.volumes}'
+oc get pvc webzoom-data -n webzoom-uat
+# 仅在确认 /data 尚未挂载、app-data 名称未占用，并已创建好上述 PVC 后执行：
+oc set volume deployment/webzoom -n webzoom-uat --add --name=app-data --type=persistentVolumeClaim --claim-name=webzoom-data --mount-path=/data --containers=webzoom
+if ($LASTEXITCODE -ne 0) { throw '存储挂载失败，请勿继续升级' }
+```
+
+挂载会触发一次重建，接着换镜像还会重建，统一在维护时段操作。PVC 需可由 OCP 分配的非 root UID/组写入；不要用 privileged、root 或放宽 SCC 绕过权限。最终 rollout 失败时查看 Pod 事件与日志，先排查 PVC 调度、挂载权限和配置路径。若 StorageClass 使用 WaitForFirstConsumer，PVC 可在 Pod 调度后才变为 Bound。
+
+**带宽注意：**上游默认初始准入值为 **200 Mbps，不是 20 Mbps**。已保存值优先于环境变量。请由应用管理员在 `/admin` 核对并按公司容量设定；尚无保存值时可通过 `TOTAL_BANDWIDTH_LIMIT_MBPS` 指定初始值。它只是在统计超限后拒绝新接入，不会强制压低既有会议流量，所以即使设成 20 也不等于保证链路不超过 20 Mbps，仍需容量测试及网络侧保护。小窗没有实现之前讨论的 UDP 广播/中继。
+
 ## D. 更新镜像（PowerShell）
 
 将 Linux `webzoom-new-image.txt` 内容粘贴到变量。不应用旧整份 Deployment 清单，避免覆盖现有 SSO/Secret/CA 配置。
@@ -125,4 +148,4 @@ if ($LASTEXITCODE -ne 0) { throw '回退请求失败' }
 oc rollout status deployment/webzoom -n webzoom-uat --timeout=300s
 ```
 
-若更新前保存的旧 tag 确认未被覆盖，也可从 `webzoom-before-pip-image.txt` 读取使用。无数据库迁移、无客户端安装，但回退同样会中断会议，不能恢复内存中的旧会议。`oc rollout undo` 会回退整个 Pod 模板，本步骤仅替换镜像，避免意外回退其他配置。
+若更新前保存的旧 tag 确认未被覆盖，也可从 `webzoom-before-pip-image.txt` 读取使用。无数据库迁移、无客户端安装；保留 PVC 和已保存带宽配置，不删除存储。回退同样会中断会议，不能恢复内存中的旧会议。`oc rollout undo` 会回退整个 Pod 模板，本步骤仅替换镜像，避免意外回退其他配置。
