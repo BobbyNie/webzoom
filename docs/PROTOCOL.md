@@ -29,12 +29,12 @@
 | GET | `/api/rooms` | 当前登录用户创建的有效会议；按创建时间从新到旧排列；空列表返回 `[]` |
 | POST | `/api/rooms` | 创建会议，返回 Snapshot |
 | GET | `/api/rooms/<id>` | 获取 Snapshot |
-| POST | `/api/rooms/<id>/actions` | JSON：`{"action":"start|stop|transfer|end","target":"用户ID"}` |
+| POST | `/api/rooms/<id>/actions` | JSON：`{"action":"start|stop|transfer|end|annotation-grant|annotation-revoke","target":"用户ID"}` |
 | GET | `/api/rooms/<id>/ws` | 带会话和 Origin 的 WebSocket Upgrade；连接即加入 |
 | GET | `/healthz`、`/readyz` | 进程健康检查 |
 | GET | `/metrics` | 独立 Bearer token 认证的监控接口 |
 
-会议 Snapshot 字段：`id`、`ownerId`、`publisherId`、`epoch`、`active`、`quality`、`createdAt`、`expiresAt`、`participants`。
+会议 Snapshot 字段：`id`、`ownerId`、`publisherId`、`epoch`、`active`、`quality`、`createdAt`、`expiresAt`、`participants`、`annotators`。
 参与者字段：`id` 和 `name`。
 只有已加入者可以 start、stop 或 transfer。固定主持人可以结束自己的会议。
 会议不存在或已经结束时，返回 404。
@@ -140,3 +140,29 @@ VP8 不需要单独发送 codec extradata。接收端必须等到同一 epoch �
 单个慢听众可能触发所在会议的公共画质降低，因为共享者只编码一路。
 它不会通过阻塞写入拖住其他听众或其他会议。
 任何 level > 0 都显示为降级。降级结果不能算正常质量验收通过。
+
+
+## 共享画面批注
+
+`annotation-grant` / `annotation-revoke` 是现有 actions 接口上的主持人操作，`target` 使用当前已连接参与者的用户 ID。不能替固定主持人改变其内建批注权限。授权只控制批注，不控制屏幕采集或全局管理员页面。
+
+客户端 WSS 命令示例（身份不由客户端提供）：
+
+```json
+{"type":"annotation","annotation":{"kind":"draw","epoch":1,"generation":0,"strokeId":"unique-stroke-id","segment":0,"color":"#e53935","points":[{"x":0.2,"y":0.3}]}}
+```
+
+- `draw`：同一用户的同一 strokeId 从 segment 0 开始递增；后续片段颜色不得改变。
+- `pointer`：points 为一个坐标时更新署名指示，空数组/省略时隐藏。指示为可丢弃的短暂状态。
+- `clear-own`：删除发送者自己的笔划。
+- `clear-all`：仅主持人可用。清除命令不带 points。
+
+服务端发送：
+
+- `{"type":"annotations","annotations":{"epoch":1,"generation":0,"strokes":[]}}`：加入或共享阶段变化时的权威笔划快照。Stroke 字段为 id、user、color、points、segment；不重播指示光标。
+- `{"type":"annotation","annotation":{...}}`：增量，携带 kind、epoch、generation、认证 user 及对应 strokeId、segment、color、points。初始片段的 `segment:0` 必须保留。
+- `{"type":"annotation-error","error":"..."}`：批注被拒绝，前端放弃尚未确认的本地预览并提示。语义拒绝不直接断开媒体连接；非法 JSON、超大消息或超出既有每连接控制频率仍受原协议断开规则约束。
+
+所有命令必须符合当前共享 epoch 与清除 generation。每次有效清除将 generation 加一；增量携带清除后的 generation。旧 generation 的在途画笔命令被拒绝，避免清除后复活。新的媒体 epoch 清除全部画线并把 generation 归零。断线移除用户批注授权；更换共享阶段保留仍在线者的授权。
+
+容量和队列边界见 `docs/ANNOTATIONS.md`。批注不改变二进制媒体封包，不纳入目前的媒体字节计数。

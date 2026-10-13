@@ -182,6 +182,8 @@ go build -o bin/loadtest ./cmd/loadtest
 - `docs/PROTOCOL.md`：接口、状态机和媒体封包。
 - `docs/CAPACITY.md`：负载工具和生产容量验收。
 - `docs/VERIFICATION.md`：已执行测试、结果和未验证项目。
+- `docs/ANNOTATIONS.md`：主持人授权的共享画面画笔、署名指示和验收边界。
+- `docs/ANNOTATION_UAT.md`：副分支测试镜像交付、OCP UAT 验收和回退。
 - `THIRD_PARTY_NOTICES.md`：依赖、许可证和检查边界。
 
 ## 管理员页面

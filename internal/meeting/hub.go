@@ -21,6 +21,7 @@ type User struct {
 	Name string `json:"name"`
 }
 type Snapshot struct {
+	Annotators   []string  `json:"annotators"`
 	Quality      int       `json:"quality"`
 	ID           string    `json:"id"`
 	OwnerID      string    `json:"ownerId"`
@@ -32,10 +33,13 @@ type Snapshot struct {
 	Participants []User    `json:"participants"`
 }
 type Event struct {
-	Type       string    `json:"type"`
-	Room       *Snapshot `json:"room,omitempty"`
-	Level      int       `json:"level,omitempty"`
-	ServerTime int64     `json:"serverTime,omitempty"`
+	Annotation  *AnnotationEvent `json:"annotation,omitempty"`
+	Annotations *AnnotationState `json:"annotations,omitempty"`
+	Error       string           `json:"error,omitempty"`
+	Type        string           `json:"type"`
+	Room        *Snapshot        `json:"room,omitempty"`
+	Level       int              `json:"level,omitempty"`
+	ServerTime  int64            `json:"serverTime,omitempty"`
 }
 type Peer struct {
 	traffic           *traffic
@@ -47,7 +51,9 @@ type Peer struct {
 	Reason            string
 }
 type room struct {
-	traffic traffic
+	annotations annotationRoom
+	annotators  map[string]bool
+	traffic     traffic
 	Snapshot
 	peers                                      map[string]*Peer
 	emptyAt, lastKey, lastFeedback, timeWindow time.Time
@@ -96,6 +102,11 @@ func (h *Hub) Create(u User) (Snapshot, error) {
 }
 func snapshot(r *room) Snapshot {
 	s := r.Snapshot
+	s.Annotators = make([]string, 0, len(r.annotators))
+	for id := range r.annotators {
+		s.Annotators = append(s.Annotators, id)
+	}
+	sort.Strings(s.Annotators)
 	s.Participants = make([]User, 0, len(r.peers))
 	for _, p := range r.peers {
 		s.Participants = append(s.Participants, p.User)
@@ -161,6 +172,7 @@ func (h *Hub) Join(id string, u User, session string) (*Peer, error) {
 	r.emptyAt = time.Time{}
 	h.broadcast(r)
 	h.keyframe(r)
+	h.emit(p, Event{Type: "annotations", Annotations: annotationSnapshot(r)})
 	return p, nil
 }
 func (h *Hub) emit(p *Peer, e Event) {
@@ -183,6 +195,7 @@ func (h *Hub) broadcast(r *room) {
 	}
 }
 func (h *Hub) reset(r *room) {
+	r.annotations = annotationRoom{}
 	r.Epoch++
 	r.Active = false
 	r.Quality = 0
@@ -211,6 +224,22 @@ func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
 		return Snapshot{}, ErrForbidden
 	}
 	switch action {
+	case "annotation-grant", "annotation-revoke":
+		if actor != r.OwnerID {
+			return Snapshot{}, ErrForbidden
+		}
+		if r.peers[target] == nil || target == r.OwnerID {
+			return Snapshot{}, ErrConflict
+		}
+		if r.annotators == nil {
+			r.annotators = map[string]bool{}
+		}
+		if action == "annotation-grant" {
+			r.annotators[target] = true
+		} else {
+			delete(r.annotators, target)
+			h.annotationBroadcast(r, AnnotationEvent{Kind: "pointer", Epoch: r.Epoch, Generation: r.annotations.generation, User: r.peers[target].User})
+		}
 	case "transfer":
 		if actor != r.OwnerID {
 			return Snapshot{}, ErrForbidden
@@ -238,6 +267,9 @@ func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
 		return Snapshot{}, ErrConflict
 	}
 	h.broadcast(r)
+	if action == "start" || action == "stop" || action == "transfer" {
+		h.broadcastAnnotations(r)
+	}
 	return snapshot(r), nil
 }
 func (h *Hub) end(r *room, reason string) {
@@ -259,6 +291,8 @@ func (h *Hub) leave(p *Peer, reason string) {
 		return
 	}
 	delete(r.peers, p.User.ID)
+	delete(r.annotators, p.User.ID)
+	h.annotationBroadcast(r, AnnotationEvent{Kind: "pointer", Epoch: r.Epoch, Generation: r.annotations.generation, User: p.User})
 	select {
 	case <-p.Done:
 	default:
@@ -273,6 +307,9 @@ func (h *Hub) leave(p *Peer, reason string) {
 		r.emptyAt = h.cfg.Now()
 	}
 	h.broadcast(r)
+	if r.PublisherID == p.User.ID {
+		h.broadcastAnnotations(r)
+	}
 }
 func (h *Hub) RevokeSession(id string) {
 	h.mu.Lock()

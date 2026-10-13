@@ -297,3 +297,32 @@ Docker Hub 与 GitHub 的账号关联不能代替镜像推送凭据。
 浏览器 OIDC 测试使用本机签名测试身份服务，不代表本轮完成真实 Keycloak 或 OpenShift 部署验收。
 未重启本机 Docker；没有改变正在运行的服务或管理员名单。
 媒体流量不包含协议开销。本轮没有重新执行生产容量测试。
+
+
+## 2026-10-13：主持人授权的网页共享画面批注
+
+工作限定在本地 `feature/screen-annotation` 副分支，基于 `f348e139ef8ba2ac1c56f05efcd9e12756ca58d6`。没有提交、推送、合并主分支或修改公司 OCP/SSO/JFrog。LAN 中继/广播方案没有继续实施。
+
+新增覆盖：主持人授权/撤销、批注权与共享权分离、伪造署名防护、同源限制、WSS 拒绝后媒体连接仍可用、epoch/generation 旧命令、顺序片段、坐标/颜色校验、存储上限、快照深拷贝、慢连接光标丢弃、本人/全体清除、晚加入画线回放、连续绘制、署名指示、全屏退出和转交共享重置。
+
+验证中实际发现并修复：
+
+- 首片段 `segment:0` 被 JSON omitempty 省略，导致浏览器忽略画线；新增失败的序列化回归测试后修复。
+- 全屏画笔图层拦截退出按钮；浏览器测试复现超时后调整基础样式层级，没有用强制点击掩盖问题。
+- Windows 大小写文件名冲突；组件采用 `ScreenAnnotations.tsx`，不与纯状态模块 `annotations.ts` 冲突。
+
+本机执行结果：
+
+- `go test ./... -count=1`：所有默认 Go 包通过，包括新增 meeting 和真实 WSS server 测试。
+- `go vet ./...`：通过。
+- TypeScript `tsc --noEmit`：通过，包括新增浏览器测试的类型检查。
+- Vitest：19 项通过；Vite 生产构建通过。
+- `WEBZOOM_TEST_PORT=18444 CI=true` 下运行完整 Playwright：29 项 Chromium 浏览器测试全部通过（原有 27 项及新增 2 项）。
+- `python -X utf8 -m unittest discover -s .github/tests -p 'test_*.py'`：23 项发布/部署配置检查通过。默认 Windows GBK 执行曾因既有 UTF-8 测试文件报解码错误，使用 Python UTF-8 模式重跑通过，未修改原有测试规避检查。
+- `git diff --check`：通过；主分支和远端跟踪主分支保持原基线。
+
+限制必须保留：本轮 `go test -race ./internal/meeting ./internal/server -count=1` 未执行成功，当前 Windows Go 环境禁用 CGO，提示 `-race requires cgo`。本记录不把之前版本的竞态测试结果作为新增功能的竞态验证。
+
+浏览器测试使用独立本地 HTTPS、签名测试 OIDC、12 秒短期令牌和动画 Canvas 采集；实际运行 VP8/WSS 与多账号浏览器连接。只在测试配置忽略本地自签名证书，生产 TLS 校验未放宽。检查了新截图中的授权按钮、单行工具栏、画线及署名光标。没有重启本机既有 Docker。
+
+这些结果不代表真实公司 Keycloak、目标 OCP、Edge、实际系统屏幕选择器、桌面原窗口叠加或百人同时绘制已经通过。没有执行新的容器部署和生产容量验收。批注 JSON 不纳入管理员媒体字节统计；多人使用仍须按 `docs/ANNOTATIONS.md` 的清单在 UAT 验证。
