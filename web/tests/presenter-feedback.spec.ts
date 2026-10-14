@@ -40,6 +40,16 @@ async function open(page: Page) {
   await expect(pip.getByRole('button', {name: '完整画面', exact: true})).toBeVisible();
   return pip;
 }
+// A click handler deliberately destroys its own Document PiP target. Chromium
+// can report that destruction before Playwright receives the input ACK on Linux.
+// Accept only that exact close race; the caller still checks the owner/server
+// outcome. Timeouts, detached elements, and unrelated action errors must fail.
+async function clickClosingWindow(pip: Page, name: string) {
+  const closed = pip.waitForEvent('close');
+  await Promise.all([closed, pip.getByRole('button', {name, exact: true}).click().catch((error: unknown) => {
+    if (!(error instanceof Error) || !error.message.includes('Target page, context or browser has been closed') || !pip.isClosed()) throw error;
+  })]);
+}
 async function draw(page: Page) {
   await page.getByRole('button', {name: '画笔', exact: true}).click();
   const box = (await page.getByTestId('annotation-surface').boundingBox())!;
@@ -90,13 +100,17 @@ test('native Document PiP shows remote strokes and named pointers, supports zoom
     await owner.getByRole('button', {name: '撤销 FeedbackGuest 批注', exact: true}).click();
     await expect(guest.getByRole('button', {name: '画笔', exact: true})).toHaveCount(0);
     await expect(pip.getByTestId('feedback-pointer')).toHaveCount(0);
-    await pip.getByRole('button', {name: '关闭反馈小窗', exact: true}).click();
+    await clickClosingWindow(pip, '关闭反馈小窗');
     await expect.poll(() => pip.isClosed()).toBe(true);
     await expect(owner.getByRole('button', {name: '停止共享', exact: true})).toBeVisible();
     await expect(owner.getByRole('button', {name: '打开反馈小窗'})).toBeEnabled();
     const reopened = await open(owner);
     expect(mediaConnections).toBe(1);
-    await reopened.getByRole('button', {name: '停止共享', exact: true}).click();
+    const stopped = owner.waitForResponse(response => response.url().endsWith('/actions') && response.request().postDataJSON()?.action === 'stop');
+    await clickClosingWindow(reopened, '停止共享');
+    const response = await stopped;
+    expect(response.ok()).toBe(true);
+    expect((await response.json()).active).toBe(false);
     await expect.poll(() => reopened.isClosed()).toBe(true);
     await expect(owner.getByRole('button', {name: '共享屏幕', exact: true})).toBeVisible();
     expect(errors).toEqual([]);
