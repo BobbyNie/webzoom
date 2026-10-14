@@ -5,7 +5,7 @@ it('requests screen video only, never requests audio or camera',async()=>{
  const getDisplayMedia=vi.fn().mockResolvedValue(stream);
  expect(await captureScreen({getDisplayMedia} as unknown as MediaDevices)).toBe(stream);
  expect(getDisplayMedia).toHaveBeenCalledWith(screenConstraints);
- expect(screenConstraints.audio).toBe(false);
+ expect(screenConstraints.audio).toBe(false);expect(screenConstraints.surfaceSwitching).toBe('exclude');
 });
 it('stops every track if the browser unexpectedly returns audio',async()=>{
  const stop=vi.fn();const stream={getAudioTracks:()=>[{stop}],getTracks:()=>[{stop},{stop}]};

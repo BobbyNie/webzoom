@@ -4,7 +4,7 @@
 .stage-panel:fullscreen{position:relative;width:100%;height:100%;margin:0;padding:0;border:0;border-radius:0;background:#000;overflow:hidden}
 .stage-panel:fullscreen .stage-top,.stage-panel:fullscreen .toolbar{display:none}
 .stage-panel:fullscreen .screen-stage{width:100%;height:100%;max-height:none;aspect-ratio:auto;background:#000}
-.stage-panel:fullscreen .stage-bottom{position:absolute;inset:auto 0 0;height:40px;background:#10221fe6;z-index:1}
+.stage-panel:fullscreen .stage-bottom{position:absolute;inset:auto 0 0;height:40px;background:#10221fe6;z-index:3}
 .stage-panel:fullscreen .icon-button{color:#fff}
 
 .my-meetings { margin-top: 40px; }

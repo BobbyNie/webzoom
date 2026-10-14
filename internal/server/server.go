@@ -222,14 +222,26 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 				return
 			}
 			var msg struct {
-				Type       string `json:"type"`
-				Level      int    `json:"level"`
-				ClientTime int64  `json:"clientTime"`
+				Annotation *meeting.AnnotationCommand `json:"annotation"`
+				Type       string                     `json:"type"`
+				Level      int                        `json:"level"`
+				ClientTime int64                      `json:"clientTime"`
 			}
 			if json.Unmarshal(data, &msg) != nil {
 				return
 			}
 			switch msg.Type {
+			case "annotation":
+				if msg.Annotation == nil {
+					return
+				}
+				if err := a.Hub.Annotate(p, *msg.Annotation); err != nil {
+					reason := "批注未被接受：权限或共享画面已变化，请重试。"
+					if errors.Is(err, meeting.ErrCapacity) {
+						reason = "批注内容或更新频率达到上限，请清除批注或稍后重试。"
+					}
+					a.Hub.RejectAnnotation(p, reason)
+				}
 			case "keyframe":
 				a.Hub.RequestKeyframe(p)
 			case "quality":

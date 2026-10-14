@@ -519,3 +519,40 @@ OpenShift 存储驱动的 `fsGroup` 支持、PVC 权限和升级保留行为仍�
 默认 200 Mbps 会影响此压力测试的接入准备。隔离测试前须显式提高已保存上限。
 此功能只控制新接入，不强制已有流量保持在上限以内。
 文件同步与原子替换不构成断电恢复保证。运维仍需备份持久卷。
+
+## 2026-10-14：在领导 main 上增量加入共享者反馈小窗
+
+分支 `feature/presenter-feedback-on-leader-main` 直接从领导 main
+`2fc30468751a6802a934208fecbcdfb9f6cd3974` 创建，检查结束前再次确认远端 main 仍为此提交。
+版本独立命名为 **`pip-uat-main-2fc3046-r1`**，页面底部可辨认。未复用正式 `v*` 标签。
+只迁入网页批注及 Document PiP 所需增量，没有迁入旧原生桌面助手、配对接口或旧部署模板。
+
+### 本轮实际结果
+
+- TypeScript 类型检查通过；Vitest 8 个文件、31 项测试通过；Vite 生产构建通过。
+- `WEBZOOM_TEST_PORT=18446 CI=true`，Chromium 完整浏览器测试最终 **60/60 通过**。
+  使用两个独立账号、签名 OIDC fixture、canvas 合成视频流和实际 WSS/VP8 编解码。
+  覆盖笔迹/姓名光标、位置误差、三种显示模式、窗口尺寸、撤销权限、停止/结束/转交/断线关闭、
+  延迟打开清理、丢失清除事件后的光标超时、不支持/被拒绝时保留共享，以及登录失效关闭小窗。
+  新增真实管理员总览/带宽控件和批量结束会议与活动 PiP 共存的回归，不仅是接口模拟。
+- 复核 720×520 和 360×400 小窗截图，笔迹、姓名、跟随提示、按钮可见；截图为合成测试画面，不是公司桌面。
+- `go vet ./...` 通过。meeting/server/auth/media/命令行及负载生成包的非缓存回归通过。
+- `go test ./...` 在 Windows 上 **不完全通过**：既有
+  `internal/bandwidth/TestFileStoreInitialConfigurationAndRestart` 要求 POSIX `0660`，
+  Windows 返回 `0666`，因此权限断言失败。该包及实现与领导 main 完全相同，未为绿色结果修改或屏蔽测试。
+  另行运行该包其余测试通过（显式 `-skip` 此一个用例，仅用于故障隔离），不能算完整 Linux 存储测试通过。
+- 本机 `go test -race` 无法执行：当前 Windows Go 环境没有启用 CGO。
+  竞态检查仍必须由现有 Linux CI 执行，不能把普通测试当作竞态测试。
+- Go 后端 `GOOS=linux GOARCH=amd64 CGO_ENABLED=0` 交叉编译成功，仅说明编译成功，不是容器启动验证。
+- 现有 Python 部署/发布/文档回归共 38 项：37 通过、1 项按原条件跳过
+  （未提供真实 Trivy CLI 的兼容性检查）。配置了锁定 PyYAML 后重新执行通过，未修改发布策略。
+- 对比领导 main，Dockerfile、工作流、deploy 目录、SSO 实现、bandwidth 持久化实现、
+  `docs/DEPLOYMENT.md` 和 `docs/PLAN.md` 均没有改动。
+
+### 尚未验证 / 未执行
+
+本机 Docker Linux engine 不可用；没有新建或发布容器镜像，没有上传测试版 Release，
+没有修改 GitHub main、公司 OCP/JFrog/SSO、管理员名单或 PVC。
+Linux 全量测试、竞态检查、Trivy 扫描、任意 UID/只读根/PVC 容器测试须在构建流水线补齐。
+公司浏览器策略、真实 OS 屏幕选择、桌面置顶/整屏入镜、公司 SSO 和目标集群仍须 UAT。
+没有容量或百人并发保证。详见 `docs/PRESENTER_FEEDBACK.md` 与 `docs/ANNOTATION_UAT.md`。

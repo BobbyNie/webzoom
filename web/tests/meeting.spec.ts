@@ -16,7 +16,7 @@ test('login, create, share video, join late, transfer and end',async({browser})=
  await expect.poll(()=>viewer.getByTestId('frames').textContent()).not.toBe('0');
  await viewer.screenshot({path:'test-results/meeting-viewer.png',fullPage:true});
  expect(await owner.evaluate(()=>(window as unknown as {captureCalls:DisplayMediaStreamOptions[]}).captureCalls[0].audio)).toBe(false);
- await owner.getByLabel('共享者').selectOption('Bob');await owner.getByRole('button',{name:'转交共享权'}).click();
+ await owner.getByLabel('共享者',{exact:true}).selectOption('Bob');await owner.getByRole('button',{name:'转交共享权'}).click();
  await expect(owner.getByTestId('share-state')).toHaveText('等待共享');await viewer.getByRole('button',{name:'共享屏幕',exact:true}).click();await expect.poll(()=>owner.getByTestId('frames').textContent()).not.toBe('0');
  await owner.getByRole('button',{name:'结束会议',exact:true}).click();await owner.getByRole('button',{name:'确认结束'}).click();await expect(viewer.getByText('会议已结束或已过期。')).toBeVisible();expect(errors).toEqual([]);
  await ownerContext.close();await viewerContext.close();

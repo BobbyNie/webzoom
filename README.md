@@ -194,6 +194,9 @@ go build -o bin/loadtest ./cmd/loadtest
 - `docs/VERIFICATION.md`：已执行测试、结果和未验证项目。
 - `docs/SECURITY.md`：CVE 检查、修复、剩余风险和扫描命令。
 - `docs/CI.md`：发布凭据、自动版本、漏洞门槛和镜像摘要。
+- `docs/PRESENTER_FEEDBACK.md`：基于领导 main 的纯网页置顶反馈小窗、测试版本命名和部署边界。
+- `docs/ANNOTATIONS.md`：主持人授权的共享画面画笔、署名指示和验收边界。
+- `docs/ANNOTATION_UAT.md`：副分支测试镜像交付、OCP UAT 验收和回退。
 - `THIRD_PARTY_NOTICES.md`：依赖、许可证和检查边界。
 
 ## 管理员页面
