@@ -54,3 +54,9 @@
 ## 维护者部署必读
 
 先读 [公司 OCP 发布手册](COMPANY_OCP_RELEASE_RUNBOOK.md)，沿用同分支、Linux 搬运 + Windows 更新及真实镜像备份流程。具体发布完成状态以对应 Release/CI 为准，不以候选版本字样为准。
+
+## r2 当前交付状态（2026-10-14）
+
+r2 已通过完整 Linux CI `38523756877` 并以同名独立 prerelease 发布；源码/镜像对应提交 `217108b0420328f261550d35147f8939c3b53b28`。
+以上“发布时必须”是持续有效的流程要求，不表示本次还未发布。公司 JFrog 搬运和 OCP 更新尚未由代理执行。
+具体哈希与检查记录见 [VERIFICATION.md](VERIFICATION.md) 的 r2 发布完成记录及 Release 附件。

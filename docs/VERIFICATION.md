@@ -599,3 +599,20 @@ Playwright 尚未收到输入 ACK 就报告目标已关闭。该轮整体失败�
 - 本轮未执行 Linux 全量竞态测试、容器扫描和真实 OCP 验收，须在新镜像构建流水线补齐。
 - 没有推送本轮修改、创建 r2 Release/镜像、覆盖 r1 产物、修改领导正式版本或部署公司环境。
 - 未修改 Dockerfile、工作流、deploy 目录、SSO 实现、管理员配置、PVC 或带宽持久化实现。
+
+## r2 发布完成记录（2026-10-14；补充上文发布前状态）
+
+上面的“未推送/未发布/未执行 Linux CI”记录是发布前本地检查时点，不再代表当前状态。
+
+- 应用与 runbook 提交 `217108b0420328f261550d35147f8939c3b53b28` 已推送同一功能分支；main 仍为领导 `2fc3046`，未修改。
+- Linux CI `38523756877` 整体 success，两个必需 job 均成功；Go 全量 race/vet/govulncheck、前端 31/31、Chromium **62/62**、audit、Trivy、任意 UID/只读根/PVC/HTTPS 代理容器验证均通过。
+- `pip-uat-main-2fc3046-r2` prerelease 已发布，tag 指向上述通过的应用提交；正式 latest 仍为领导 `v0.1.6`。之后文档补充提交不改变这个镜像来源。
+- 镜像归档 SHA-256：`044187f54414a4b250200636001901091bc060bf14ecd10e875fa01f7639ff9c`。
+- config ID：`sha256:27b90dff8be15e301365849bee93ae6639e269c083549cc399126226db242f88`，不是 registry manifest digest。
+- 下载同一轮 tested-container，核验全部归档 blob、config ID、Linux/amd64、用户 65532:65532、源码 revision/source labels 和内置 r2 版本。Release 附件发布后再次下载，各项 SHA256SUMS 与源文件一致。
+- 已清理 runbook 中列出的四个废弃分支；清理前校验完整历史 Git bundle，并用原 tip lease 保护远程删除。main/现用分支和全部既有 tag/Release 保留；三份 LAN 设计文档已原样归档到当前分支。
+- 环境专用 PowerShell 更新/回退命令保存在本地部署记录，已通过语法检查和 8 个模拟 oc 情境（含失败停止、禁止覆盖备份及真实旧镜像回退）；这不是公司 OCP 实测。
+- 本代理没有访问/改动公司 JFrog、OCP、SSO、管理员名单或 PVC；真实部署与公司双账号 UAT 仍待用户执行。
+
+Release：<https://github.com/BobbyNie/webzoom/releases/tag/pip-uat-main-2fc3046-r2>。
+CI：<https://github.com/BobbyNie/webzoom/actions/runs/38523756877>。
