@@ -29,6 +29,6 @@ test('refresh rejection stops media and asks the user to log in',async({page})=>
 });
 test('temporary identity provider failure is visible without immediate logout',async({page})=>{
  await viewer(page,503);await page.clock.runFor(4000);
- await expect(page.getByRole('status')).toContainText('登录续期暂时失败');
+ await expect(page.locator('.compatibility[role="status"]')).toContainText('登录续期暂时失败');
  await expect(page.getByText('已连接',{exact:true})).toBeVisible();
 });

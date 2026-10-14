@@ -146,6 +146,10 @@ func fail(w http.ResponseWriter, e error) {
 		status = 403
 	case errors.Is(e, meeting.ErrConflict):
 		status = 409
+	case errors.Is(e, meeting.ErrAnnotationRequestRate):
+		status = http.StatusTooManyRequests
+		w.Header().Set("Retry-After", "10")
+		w.Header().Set("X-WebZoom-Error", "annotation_request_rate")
 	case errors.Is(e, meeting.ErrCapacity):
 		status = 429
 	}

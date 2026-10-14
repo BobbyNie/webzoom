@@ -17,22 +17,24 @@ var ErrForbidden = errors.New("operation not permitted")
 var ErrCapacity = errors.New("capacity reached")
 var ErrBandwidth = errors.New("bandwidth limit exceeded")
 var ErrConflict = errors.New("already connected or invalid meeting state")
+var ErrAnnotationRequestRate = errors.New("annotation requests too frequent; retry shortly")
 
 type User struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 type Snapshot struct {
-	Annotators   []string  `json:"annotators"`
-	Quality      int       `json:"quality"`
-	ID           string    `json:"id"`
-	OwnerID      string    `json:"ownerId"`
-	PublisherID  string    `json:"publisherId"`
-	Epoch        uint32    `json:"epoch"`
-	Active       bool      `json:"active"`
-	CreatedAt    time.Time `json:"createdAt"`
-	ExpiresAt    time.Time `json:"expiresAt"`
-	Participants []User    `json:"participants"`
+	Annotators         []string  `json:"annotators"`
+	AnnotationRequests []string  `json:"annotationRequests"`
+	Quality            int       `json:"quality"`
+	ID                 string    `json:"id"`
+	OwnerID            string    `json:"ownerId"`
+	PublisherID        string    `json:"publisherId"`
+	Epoch              uint32    `json:"epoch"`
+	Active             bool      `json:"active"`
+	CreatedAt          time.Time `json:"createdAt"`
+	ExpiresAt          time.Time `json:"expiresAt"`
+	Participants       []User    `json:"participants"`
 }
 type Event struct {
 	Annotation  *AnnotationEvent `json:"annotation,omitempty"`
@@ -44,18 +46,21 @@ type Event struct {
 	ServerTime  int64            `json:"serverTime,omitempty"`
 }
 type Peer struct {
-	traffic           *traffic
-	User              User
-	SessionID, RoomID string
-	Events            chan Event
-	Media             *media.Queue
-	Done              chan struct{}
-	Reason            string
+	traffic                 *traffic
+	annotationRequestWindow time.Time
+	annotationRequestCount  int
+	User                    User
+	SessionID, RoomID       string
+	Events                  chan Event
+	Media                   *media.Queue
+	Done                    chan struct{}
+	Reason                  string
 }
 type room struct {
-	annotations annotationRoom
-	annotators  map[string]bool
-	traffic     traffic
+	annotations        annotationRoom
+	annotators         map[string]bool
+	annotationRequests map[string]bool
+	traffic            traffic
 	Snapshot
 	peers                                      map[string]*Peer
 	emptyAt, lastKey, lastFeedback, timeWindow time.Time
@@ -115,6 +120,11 @@ func snapshot(r *room) Snapshot {
 		s.Annotators = append(s.Annotators, id)
 	}
 	sort.Strings(s.Annotators)
+	s.AnnotationRequests = make([]string, 0, len(r.annotationRequests))
+	for id := range r.annotationRequests {
+		s.AnnotationRequests = append(s.AnnotationRequests, id)
+	}
+	sort.Strings(s.AnnotationRequests)
 	s.Participants = make([]User, 0, len(r.peers))
 	for _, p := range r.peers {
 		s.Participants = append(s.Participants, p.User)
@@ -235,19 +245,75 @@ func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
 		return Snapshot{}, ErrForbidden
 	}
 	switch action {
-	case "annotation-grant", "annotation-revoke":
+	case "annotation-request", "annotation-cancel":
+		// An authenticated participant may only change their own request.
+		if actor == r.OwnerID || target != "" {
+			return Snapshot{}, ErrForbidden
+		}
+		if action == "annotation-request" {
+			if r.annotators[actor] || r.annotationRequests[actor] {
+				return snapshot(r), nil
+			}
+			// Bound request/cancel churn from an attendee without limiting
+			// idempotent retries or preventing an immediate cancellation.
+			p := r.peers[actor]
+			now := h.cfg.Now()
+			if p.annotationRequestWindow.IsZero() || now.Sub(p.annotationRequestWindow) >= 10*time.Second {
+				p.annotationRequestWindow, p.annotationRequestCount = now, 0
+			}
+			if p.annotationRequestCount >= 5 {
+				return Snapshot{}, ErrAnnotationRequestRate
+			}
+			p.annotationRequestCount++
+			if r.annotationRequests == nil {
+				r.annotationRequests = map[string]bool{}
+			}
+			r.annotationRequests[actor] = true
+		} else {
+			if !r.annotationRequests[actor] {
+				return snapshot(r), nil
+			}
+			delete(r.annotationRequests, actor)
+		}
+	case "annotation-approve-all":
+		if actor != r.OwnerID {
+			return Snapshot{}, ErrForbidden
+		}
+		if target != "" {
+			return Snapshot{}, ErrConflict
+		}
+		if len(r.annotationRequests) == 0 {
+			return snapshot(r), nil
+		}
+		if r.annotators == nil {
+			r.annotators = map[string]bool{}
+		}
+		// Action holds the hub lock: approve only the currently pending,
+		// connected participants, never everyone in the room.
+		for id := range r.annotationRequests {
+			if r.peers[id] != nil && id != r.OwnerID {
+				r.annotators[id] = true
+			}
+		}
+		clear(r.annotationRequests)
+	case "annotation-approve", "annotation-deny", "annotation-grant", "annotation-revoke":
 		if actor != r.OwnerID {
 			return Snapshot{}, ErrForbidden
 		}
 		if r.peers[target] == nil || target == r.OwnerID {
 			return Snapshot{}, ErrConflict
 		}
+		if (action == "annotation-approve" || action == "annotation-deny") && !r.annotationRequests[target] {
+			// A stale approval must not grant a cancelled or already denied request.
+			return snapshot(r), nil
+		}
+		delete(r.annotationRequests, target)
 		if r.annotators == nil {
 			r.annotators = map[string]bool{}
 		}
-		if action == "annotation-grant" {
+		if action == "annotation-grant" || action == "annotation-approve" {
 			r.annotators[target] = true
-		} else {
+		} else if action == "annotation-revoke" {
 			delete(r.annotators, target)
 			h.annotationBroadcast(r, AnnotationEvent{Kind: "pointer", Epoch: r.Epoch, Generation: r.annotations.generation, User: r.peers[target].User})
 		}
@@ -303,6 +369,7 @@ func (h *Hub) leave(p *Peer, reason string) {
 	}
 	delete(r.peers, p.User.ID)
 	delete(r.annotators, p.User.ID)
+	delete(r.annotationRequests, p.User.ID)
 	h.annotationBroadcast(r, AnnotationEvent{Kind: "pointer", Epoch: r.Epoch, Generation: r.annotations.generation, User: p.User})
 	select {
 	case <-p.Done:

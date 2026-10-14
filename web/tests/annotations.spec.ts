@@ -79,7 +79,7 @@ test('a finished stroke does not block the next gesture while draw acknowledgeme
   // Hold all echoes: accepted gestures remain bounded instead of silently dropping or growing forever.
   for(let i=0;i<6;i++)await draw(guest);
   await expect(strokes(owner)).toHaveCount(8);await draw(guest);
-  await expect(guest.getByRole('status')).toHaveText('网络确认较慢，请稍候再绘制。');
+  await expect(guest.locator('.annotation-layer').getByRole('status')).toHaveText('网络确认较慢，请稍候再绘制。');
   await expect(guest.getByTestId('annotation-pending').locator('polyline,circle')).toHaveCount(8);
   releaseAcknowledgements();await expect(strokes(guest)).toHaveCount(8);
   await expect(guest.getByTestId('annotation-pending').locator('polyline,circle')).toHaveCount(0);

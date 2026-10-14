@@ -1,6 +1,6 @@
 # 批注 + 共享者反馈小窗 UAT
 
-本轮是在领导 main `2fc3046` 上增量开发，分支 `feature/presenter-feedback-on-leader-main`，版本 **`pip-uat-main-2fc3046-r1`**。不是旧小窗镜像，也不是领导正式 `v0.1.x` 版本。能力和限制见 [PRESENTER_FEEDBACK.md](PRESENTER_FEEDBACK.md)。
+本轮是在领导 main `2fc3046` 上增量开发，分支 `feature/presenter-feedback-on-leader-main`，版本 **`pip-uat-main-2fc3046-r2`**。不是旧小窗镜像，也不是领导正式 `v0.1.x` 版本。能力和限制见 [PRESENTER_FEEDBACK.md](PRESENTER_FEEDBACK.md)。
 
 ## 交付状态和发布路径
 
@@ -13,7 +13,7 @@
 1. 明确推送本功能分支，不能依赖当前跟踪分支执行无参数 push。
 2. 在该分支的固定提交上运行现有工作流，确认质量与镜像两个 job 都成功。
 3. 下载**同一轮测试过的镜像**，记录产物提交 SHA、工作流 run、SHA-256、image ID；校验下载文件后再搬运。
-4. 如需 GitHub Release，创建名为 `pip-uat-main-2fc3046-r1` 的 **prerelease**，指向本功能提交，并附该轮镜像包、校验和及说明。不要标为最新正式版本，不上传源码 ZIP 冒充镜像。
+4. 如需 GitHub Release，创建名为 `pip-uat-main-2fc3046-r2` 的 **prerelease**，指向本功能提交，并附该轮镜像包、校验和及说明。不要标为最新正式版本，不上传源码 ZIP 冒充镜像。
 5. 公司批准的 Linux/Podman 机器解压加载、核对 image ID，tag 成唯一 JFrog 测试标签并 push。实际 load 后的镜像名以输出为准，不能猜 `webzoom:local` 的拼写。记录 push 后的 registry digest；它不等于 image ID。
 6. 不把访问令牌写入公开命令、文档或 Release。公司 TLS 和凭据处理沿用已确认的公司流程；不改 OCP 全局 registry 信任策略。
 
@@ -38,3 +38,19 @@
 8. 公司浏览器不支持或策略禁用 API 时明确提示，不能影响正常共享；不要求用户安装原生助手。
 
 自动浏览器测试使用签名 OIDC fixture 和 canvas 合成共享流：验证真实 WSS、浏览器解码和 Document PiP，但不能替代真实公司 SSO、OS 屏幕选择器、Windows 桌面置顶和 OCP/PVC/任意 UID 实测。性能与百人容量未因此获得保证。
+
+## r2：申请批注验收（独立版本，未发布不代表公司已升级）
+
+本轮沿用同一功能分支，在既有 r1 小窗功能上增量开发；页面版本预置为 `pip-uat-main-2fc3046-r2`。
+不要覆盖已发布的 r1 产物，也不要复用领导的正式版本号。新镜像需另行通过 Linux CI 并发布后才能部署。
+
+1. 一个主持人、至少三名观众进入同一会议（可在开始共享前申请）。A 申请后，A 显示等待，主持人看到 A；此时 A 不能画画。
+2. 主持人拒绝 A 后，A 恢复可申请；A 再申请，主持人单独同意，A 可使用画笔/姓名指示光标。
+3. 撤销 A 权限；A、B 同时申请，第三名观众 C 不申请。主持人点击“一键同意全部（2）”，A/B 获权，C 不获权。
+4. A 申请后取消，主持人列表随即移除；申请人离会/断线/登录失效也移除。重新加入必须重新申请。
+5. 主持人刷新重连，仍能看到在线人的待处理申请；开始/停止共享或转交共享权不隐式批准申请。
+6. 回归既有主动授权/撤销、主持人批注、共享者反馈小窗、SSO、管理员和带宽持久化。
+
+## 维护者部署必读
+
+先读 [公司 OCP 发布手册](COMPANY_OCP_RELEASE_RUNBOOK.md)，沿用同分支、Linux 搬运 + Windows 更新及真实镜像备份流程。具体发布完成状态以对应 Release/CI 为准，不以候选版本字样为准。
