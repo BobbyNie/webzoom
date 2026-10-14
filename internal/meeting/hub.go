@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 	"webzoom/internal/bandwidth"
+	"webzoom/internal/lan"
 	"webzoom/internal/media"
 )
 
@@ -37,6 +38,7 @@ type Snapshot struct {
 	Participants       []User    `json:"participants"`
 }
 type Event struct {
+	LAN         *LANState        `json:"lan,omitempty"`
 	Annotation  *AnnotationEvent `json:"annotation,omitempty"`
 	Annotations *AnnotationState `json:"annotations,omitempty"`
 	Error       string           `json:"error,omitempty"`
@@ -46,6 +48,7 @@ type Event struct {
 	ServerTime  int64            `json:"serverTime,omitempty"`
 }
 type Peer struct {
+	lan                     *lanPeer
 	traffic                 *traffic
 	annotationRequestWindow time.Time
 	annotationRequestCount  int
@@ -57,6 +60,7 @@ type Peer struct {
 	Reason                  string
 }
 type room struct {
+	lan                lanRoom
 	annotations        annotationRoom
 	annotators         map[string]bool
 	annotationRequests map[string]bool
@@ -69,6 +73,7 @@ type room struct {
 	windowBytes                                int
 }
 type Config struct {
+	LAN                  LANConfig
 	BandwidthLimitMbps   int
 	SaveBandwidthLimit   func(int) error
 	Now                  func() time.Time
@@ -76,6 +81,7 @@ type Config struct {
 }
 type Metrics struct{ Ingress, Egress, Dropped, Degraded atomic.Uint64 }
 type Hub struct {
+	lan        lanHub
 	bandwidth  *bandwidth.Limiter
 	instanceID string
 	startedAt  time.Time
@@ -89,7 +95,17 @@ func New(c Config) *Hub {
 	if c.Now == nil {
 		c.Now = time.Now
 	}
-	return &Hub{bandwidth: bandwidth.New(c.BandwidthLimitMbps, c.SaveBandwidthLimit), instanceID: token(), startedAt: c.Now(), rooms: make(map[string]*room), cfg: c}
+	if c.LAN.BudgetMbps == 0 {
+		c.LAN.BudgetMbps = 16
+	}
+	if c.LAN.StreamMbps == 0 {
+		c.LAN.StreamMbps = 8
+	}
+	var lh lanHub
+	if c.LAN.Enabled {
+		lh.signer = lan.NewSigner()
+	}
+	return &Hub{lan: lh, bandwidth: bandwidth.New(c.BandwidthLimitMbps, c.SaveBandwidthLimit), instanceID: token(), startedAt: c.Now(), rooms: make(map[string]*room), cfg: c}
 }
 func token() string {
 	b := make([]byte, 24)
@@ -173,6 +189,9 @@ func (h *Hub) Owned(ownerID string) []Snapshot {
 	return rooms
 }
 func (h *Hub) Join(id string, u User, session string) (*Peer, error) {
+	return h.join(id, u, session, false)
+}
+func (h *Hub) join(id string, u User, session string, useLAN bool) (*Peer, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	r, e := h.room(id)
@@ -188,8 +207,15 @@ func (h *Hub) Join(id string, u User, session string) (*Peer, error) {
 	if h.cfg.MaxViewers > 0 && len(r.peers) >= h.cfg.MaxViewers+1 {
 		return nil, ErrCapacity
 	}
+	if h.cfg.LAN.Enabled && !useLAN && u.ID != r.PublisherID && h.lanUsed() >= h.lanSlots() {
+		return nil, ErrBandwidth
+	}
 	p := &Peer{traffic: &r.traffic, User: u, SessionID: session, RoomID: id, Events: make(chan Event, 32), Media: media.NewQueue(8, 2<<20), Done: make(chan struct{})}
+	if useLAN {
+		p.lan = &lanPeer{node: lan.NewID(), edges: map[string]time.Time{}}
+	}
 	r.peers[u.ID] = p
+	h.lanReplan()
 	r.emptyAt = time.Time{}
 	h.broadcast(r)
 	h.keyframe(r)
@@ -324,6 +350,9 @@ func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
 		if r.peers[target] == nil {
 			return Snapshot{}, ErrConflict
 		}
+		if h.cfg.LAN.Enabled && h.lanDirectAfterTransfer(r, target) > h.lanSlots() {
+			return Snapshot{}, ErrBandwidth
+		}
 		h.reset(r)
 		r.PublisherID = target
 	case "start":
@@ -343,6 +372,7 @@ func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
 	default:
 		return Snapshot{}, ErrConflict
 	}
+	h.lanReplan()
 	h.broadcast(r)
 	if action == "start" || action == "stop" || action == "transfer" {
 		h.broadcastAnnotations(r)
@@ -360,6 +390,7 @@ func (h *Hub) end(r *room, reason string) {
 		p.Media.Reset()
 	}
 	delete(h.rooms, r.ID)
+	h.lanReplan()
 }
 func (h *Hub) Leave(p *Peer) { h.mu.Lock(); defer h.mu.Unlock(); h.leave(p, "disconnected") }
 func (h *Hub) leave(p *Peer, reason string) {
@@ -384,6 +415,7 @@ func (h *Hub) leave(p *Peer, reason string) {
 	if len(r.peers) == 0 {
 		r.emptyAt = h.cfg.Now()
 	}
+	h.lanReplan()
 	h.broadcast(r)
 	if r.PublisherID == p.User.ID {
 		h.broadcastAnnotations(r)
@@ -475,12 +507,51 @@ func (h *Hub) Publish(p *Peer, data []byte) error {
 	h.bandwidth.Record(now, uint64(len(data)))
 	h.Metrics.Ingress.Add(uint64(len(data)))
 	r.traffic.ingress.Add(uint64(len(data)))
+	var envelope []byte
+	if h.cfg.LAN.Enabled && len(r.lan.groups) > 0 {
+		tag, generation, epoch := r.lan.tag, r.lan.generation, r.Epoch
+		h.mu.Unlock()
+		envelope, e = lan.Sign(h.lan.signer, tag, generation, data)
+		h.mu.Lock()
+		if e != nil {
+			return e
+		}
+		if h.rooms[r.ID] != r || !r.Active || r.Epoch != epoch || r.lan.generation != generation || r.peers[p.User.ID] != p || r.PublisherID != p.User.ID {
+			return nil
+		}
+	}
+	cost := 0
+	for _, v := range r.peers {
+		if v != p && h.lanCanSend(v, now) {
+			if v.lan != nil {
+				cost += len(envelope)
+			} else {
+				cost += len(data)
+			}
+		}
+	}
+	if !h.lanSpend(cost, now) {
+		for _, v := range r.peers {
+			v.Media.Reset()
+		}
+		h.Metrics.Dropped.Add(1)
+		h.lanCongested(r)
+		h.keyframe(r)
+		return nil
+	}
 	needKey := false
 	for _, v := range r.peers {
-		if v == p {
+		if v == p || !h.lanCanSend(v, now) {
 			continue
 		}
-		if !v.Media.Push(data, f.Key) {
+		payload := data
+		if v.lan != nil {
+			payload = envelope
+			if len(payload) == 0 {
+				continue
+			}
+		}
+		if !v.Media.Push(payload, f.Key) {
 			h.Metrics.Dropped.Add(1)
 			needKey = true
 		}

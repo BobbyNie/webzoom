@@ -1,3 +1,4 @@
+import {LANClient} from './lan';
 import Annotations from './ScreenAnnotations';
 import PresenterFeedback from './PresenterFeedback';
 import AnnotationRequests from './AnnotationRequests';
@@ -21,6 +22,8 @@ export default function App(){
  const [identity,setIdentity]=useState<Identity|null|undefined>(undefined),[room,setRoom]=useState<Room|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[capability,setCapability]=useState('正在检查浏览器…'),[connected,setConnected]=useState(false),[terminal,setTerminal]=useState(false),[stalled,setStalled]=useState(false),[busy,setBusy]=useState(false),[sharing,setSharing]=useState(false),[stats,setStats]=useState<MediaStats>(blankStats),[target,setTarget]=useState(''),[endDialog,setEndDialog]=useState(false),[joinLink,setJoinLink]=useState(''),[fullscreen,setFullscreen]=useState(false);
  const [annotations,setAnnotations]=useState<AnnotationState>(emptyAnnotations()),[annotationErrorVersion,setAnnotationErrorVersion]=useState(0);
  const [renewWarning,setRenewWarning]=useState('');
+ const lanEnabled=sessionStorage.getItem('webzoom-lan')==='true';
+ const [lanStatus,setLANStatus]=useState(lanEnabled?'局域网模式等待连接':'普通服务器直连');
  const userID=identity?.user.id,csrf=identity?.csrf;
  const sessionActive=useRef(false),lastActivity=useRef(Date.now());
  sessionActive.current=!!roomID&&!terminal&&(connected||sharing||!!room);
@@ -49,6 +52,8 @@ export default function App(){
  useEffect(()=>{
   if(!identity||!roomID||!canvas.current)return;
   let disposed=false,timer:ReturnType<typeof setTimeout>,attempts=0;
+ let lan:LANClient|null=null;
+ const receive=(b:ArrayBuffer)=>{if(roomRef.current?.active&&!publisher.current){lastVideo.current=Date.now();viewer.current?.receive(b)}};
   const keyframe=()=>{if(Date.now()-lastKeyRequest.current>=500){lastKeyRequest.current=Date.now();send({type:'keyframe'})}};
   const congestion=()=>{if(Date.now()-lastFeedback.current>=1000){lastFeedback.current=Date.now();send({type:'feedback',level:1})}};
   viewer.current=new Viewer(canvas.current,()=>offset.current,keyframe,congestion,s=>{setStats(s);setStalled(false)});
@@ -60,19 +65,20 @@ export default function App(){
    roomRef.current=next;setRoom(next);viewer.current?.setLevel(next.quality??0);
   }
   async function connect(){
+   if(lanEnabled){try{const policy=await request<{enabled:boolean}>('/api/lan');if(disposed)return;if(!policy.enabled){setLANStatus('服务端尚未启用 LAN 分流，请切回普通模式。');setTerminal(true);return}}catch(e){if(disposed)return;if((e as APIError).status===401){setError('登录已过期。请重新登录。');setIdentity(null);return}schedule();return}}
    try{const next=await request<Room>(`/api/rooms/${encodeURIComponent(roomID)}`);if(disposed)return;apply(next);}catch(e){if(disposed)return;const status=(e as APIError).status;if(status===401){setError('登录已过期。请重新登录。');setIdentity(null);return}if(status===404){setError('会议已结束或已过期。');setTerminal(true);return}if(isBandwidthLimitError(e)){setNotice(bandwidthMessage);timer=setTimeout(connect,5000);return}schedule();return;}
-   const ws=new WebSocket(`${location.origin.replace('https:','wss:')}/api/rooms/${encodeURIComponent(roomID)}/ws`);socket.current=ws;ws.binaryType='arraybuffer';
-   ws.onopen=()=>{if(disposed){ws.close();return}setConnected(true);setNotice('');attempts=0;send({type:'clock',clientTime:Date.now()});};
-   ws.onmessage=ev=>{if(disposed)return;if(ev.data instanceof ArrayBuffer){if(roomRef.current?.active&&!publisher.current){lastVideo.current=Date.now();viewer.current?.receive(ev.data)}return;}
-    try{const msg=JSON.parse(ev.data) as Control;switch(msg.type){case 'annotations':if(msg.annotations&&msg.annotations.epoch===roomRef.current?.epoch)setAnnotations({...msg.annotations,pointers:{}});break;case 'annotation':if(msg.annotation){const event=msg.annotation;setAnnotations(current=>applyAnnotation(current,event))}break;case 'annotation-error':setError(msg.error??'批注未被接受，请重试。');setAnnotationErrorVersion(v=>v+1);break;case 'room':if(msg.room)apply(msg.room);break;case 'keyframe':publisher.current?.keyframe();break;case 'congestion':publisher.current?.congested();break;case 'clock':if(msg.clientTime&&msg.serverTime){const rtt=Date.now()-msg.clientTime;if(rtt<minRTT.current){minRTT.current=rtt;offset.current=msg.serverTime-(msg.clientTime+Date.now())/2;}}break;}}catch{setError('服务返回了无效的控制消息。');}
+   const ws=new WebSocket(`${location.origin.replace('https:','wss:')}/api/rooms/${encodeURIComponent(roomID)}/ws${lanEnabled?'?lan=1':''}`);socket.current=ws;ws.binaryType='arraybuffer';
+   ws.onopen=()=>{if(disposed){ws.close();return}setConnected(true);setNotice('');attempts=0;if(lanEnabled)lan=new LANClient(send,receive,setLANStatus);send({type:'clock',clientTime:Date.now()});};
+   ws.onmessage=ev=>{if(disposed)return;if(ev.data instanceof ArrayBuffer){if(lanEnabled){void lan?.receive(ev.data)}else receive(ev.data);return;}
+    try{const msg=JSON.parse(ev.data) as Control;switch(msg.type){case 'lan':if(msg.lan)lan?.configure(msg.lan);break;case 'lan-probe':if(msg.lan)lan?.probe(msg.lan);break;case 'annotations':if(msg.annotations&&msg.annotations.epoch===roomRef.current?.epoch)setAnnotations({...msg.annotations,pointers:{}});break;case 'annotation':if(msg.annotation){const event=msg.annotation;setAnnotations(current=>applyAnnotation(current,event))}break;case 'annotation-error':setError(msg.error??'批注未被接受，请重试。');setAnnotationErrorVersion(v=>v+1);break;case 'room':if(msg.room)apply(msg.room);break;case 'keyframe':publisher.current?.keyframe();break;case 'congestion':publisher.current?.congested();break;case 'clock':if(msg.clientTime&&msg.serverTime){const rtt=Date.now()-msg.clientTime;if(rtt<minRTT.current){minRTT.current=rtt;offset.current=msg.serverTime-(msg.clientTime+Date.now())/2;}}break;}}catch{setError('服务返回了无效的控制消息。');}
    };
-   ws.onclose=()=>{if(disposed)return;socket.current=null;roomRef.current=null;setConnected(false);setAnnotations(emptyAnnotations());stopLocal();viewer.current?.reset(0);setStats(blankStats);schedule();};
+   ws.onclose=()=>{lan?.close();lan=null;if(disposed)return;socket.current=null;roomRef.current=null;setConnected(false);setAnnotations(emptyAnnotations());stopLocal();viewer.current?.reset(0);setStats(blankStats);schedule();};
   }
   function schedule(){if(disposed)return;attempts++;if(attempts>8){setError('连接失败。请检查网络，或关闭同一账号打开的其他会议标签页。');setTerminal(true);return};setNotice('连接已中断，正在重新连接…');timer=setTimeout(connect,Math.min(1000*2**(attempts-1),10000));}
   void connect();
-  const heartbeat=setInterval(()=>{send({type:'clock',clientTime:Date.now()});if(roomRef.current?.active&&!publisher.current&&Date.now()-lastVideo.current>3000){setStalled(true);viewer.current?.clear();keyframe();}},3000);
-  return()=>{disposed=true;clearTimeout(timer);clearInterval(heartbeat);socket.current?.close();socket.current=null;stopLocal();viewer.current?.close();viewer.current=null;};
- },[userID,roomID,send,stopLocal]);
+  const heartbeat=setInterval(()=>{send({type:'clock',clientTime:Date.now()});if(roomRef.current?.active&&!publisher.current&&Date.now()-lastVideo.current>3000){setStalled(true);viewer.current?.clear();keyframe();if(lanEnabled)congestion();}},3000);
+  return()=>{disposed=true;lan?.close();lan=null;clearTimeout(timer);clearInterval(heartbeat);socket.current?.close();socket.current=null;stopLocal();viewer.current?.close();viewer.current=null;};
+ },[userID,roomID,send,stopLocal,lanEnabled]);
  useEffect(()=>{
   const syncFullscreen=()=>setFullscreen(!!stagePanel.current&&document.fullscreenElement===stagePanel.current);
   document.addEventListener('fullscreenchange',syncFullscreen);
@@ -115,6 +121,7 @@ export default function App(){
    {sharing&&connected&&!terminal&&canPublish&&room?.active&&captured.current&&<PresenterFeedback key={room.epoch} stream={captured.current} state={annotations} onStop={()=>{stopLocal();void perform(()=>action('stop'))}}/>}
    <div className="meeting-footnote"><span><Icon kind="lock"/>不录制 · 不采集声音 · 不开启摄像头</span><span>登录有效期至 {new Date(identity.expiresAt).toLocaleTimeString()}</span></div>
   </main>}
+  <section className="lan-panel" aria-label="局域网分流"><label><input type="checkbox" checked={lanEnabled} disabled={sharing} onChange={e=>{sessionStorage.setItem('webzoom-lan',String(e.target.checked));location.reload()}}/> 使用局域网 UDP 分流（需要获批 Chrome 扩展及辅助程序）</label><p role="status">{lanStatus}</p><small>切换模式会重新连接会议。广播失败不会自动回退直连；切回普通模式仍受服务器带宽预算限制。</small></section>
   <footer className="app-footer"><span>WEBZOOM / 内网协作</span><span data-testid="test-build" title={`基于领导 main · ${testBuild.baseRevision}`}>共享反馈测试版 · {testBuild.version}</span></footer>
   {endDialog&&<div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="end-title"><p className="eyebrow">END SESSION</p><h2 id="end-title">结束这场会议？</h2><p>所有参与者将断开连接。此会议链接将失效。</p><div><button className="button secondary" onClick={()=>setEndDialog(false)}>取消</button><button className="button danger" onClick={()=>perform(async()=>{await action('end');setEndDialog(false);setTerminal(true);setNotice('会议已结束。')})}>确认结束</button></div></section></div>}
  </div>;

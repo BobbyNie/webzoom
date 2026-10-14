@@ -44,12 +44,14 @@ jobs:
         run: |
           go test -race ./...
           go vet ./...
+          GOOS=windows GOARCH=amd64 go build -o "$RUNNER_TEMP/webzoom-lan-host.exe" ./cmd/lanhost
           go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
       - name: Frontend tests and production build
         working-directory: web
         run: |
           npm ci
           npm test
+          node --test ../clients/chrome/background.test.mjs
           npm run build
           npm audit --audit-level=low
           npm audit --prefix ../.github/security/npm --audit-level=low
@@ -58,6 +60,7 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:e2e
+          npx playwright test --config playwright.lan.config.ts
 
   image:
     name: Build and test non-root image

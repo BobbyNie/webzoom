@@ -124,7 +124,7 @@ func main() {
 	if e != nil {
 		log.Fatal(e)
 	}
-	hub := meeting.New(meeting.Config{})
+	hub := meeting.New(meeting.Config{LAN: meeting.LANConfig{Enabled: os.Getenv("WEBZOOM_TEST_LAN") == "true"}})
 	app := httptest.NewUnstartedServer(server.New(server.Config{Auth: manager, Hub: hub, StaticDir: "web/dist", MetricsToken: "test-metrics", AdminUserIDs: os.Getenv("ADMIN_USER_IDS")}))
 	app.Listener.Close()
 	app.Listener = listener

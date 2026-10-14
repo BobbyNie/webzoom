@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "WebZoom LAN Relay",
+  "version": "0.1.0",
+  "description": "Approved-site LAN screen-sharing relay. Requires the user-level WebZoom native host.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0WijW1BkC+mYqUxtkgGDY96lD5ogPlxxZKklfOwQh6qXgEPj4kjNaVzAJc0RTuc9SlJgPXCNw73zvSWKaA5LcpefA1cYOEmQ8liTtEX4qQRPEMAon6Asap8q1uby7sr7LoBBLsx8SiZdLUC17qthlj798KyvDUptXWhSJN9moMODwdGh1gVsHRiQPa0BKh1LDlo32wmxQpgSoq2GYdnf48JHtgzQ9n1feG/yY5UHJhfwzLJ/EHmuLT0+cLG/l1DrCOjj6ULXFI4EtEoBjsVrpbG+pVuDfaWwgKU4hs59hVye1DwnEsZEo6DsiP2wh+8rgszpdO7j2Y2BHLqDnkXf+QIDAQAB",
+  "permissions": [
+    "nativeMessaging"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

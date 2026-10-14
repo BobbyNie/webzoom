@@ -1,7 +1,7 @@
 # WebZoom
 
-WebZoom 是内网屏幕共享服务。浏览器只连接 HTTPS 和 WSS。
-服务不使用 WebRTC、TURN、STUN、UDP 或独立的客户端 TCP 协议。
+WebZoom 是内网屏幕共享服务。默认路径中浏览器只连接 HTTPS 和 WSS，不使用 WebRTC、TURN、STUN 或 UDP。
+本分支另有**默认关闭、未完成公司实机验收**的 LAN UDP 分流试验：Chrome MV3 扩展 + 用户级 Windows helper，组内真正 UDP 广播，失败不自动全员直连。见 [实现与边界](docs/LAN_RELAY_IMPLEMENTATION.md)。
 
 **当前状态：首版核心功能和本机自动化验证已完成。生产容量验收尚未完成。**
 不要把本机测试结果视为“1000 名听众持续 30 分钟”的承诺。
@@ -197,6 +197,7 @@ go build -o bin/loadtest ./cmd/loadtest
 - `docs/PRESENTER_FEEDBACK.md`：基于领导 main 的纯网页置顶反馈小窗、测试版本命名和部署边界。
 - `docs/ANNOTATIONS.md`：主持人授权的共享画面画笔、署名指示和验收边界。
 - `docs/ANNOTATION_UAT.md`：副分支测试镜像交付、OCP UAT 验收和回退。
+- `docs/LAN_RELAY_IMPLEMENTATION.md`：LAN 分流重新评估、Chrome 客户端构建安装、开发测试及未通过的公司验收门槛。
 - `THIRD_PARTY_NOTICES.md`：依赖、许可证和检查边界。
 
 ## 管理员页面

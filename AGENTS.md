@@ -1,6 +1,7 @@
 # Working agreements
 
-- Continue on `feature/presenter-feedback-on-leader-main`. Do not create a branch per revision.
+- Presenter-feedback maintenance stays on `feature/presenter-feedback-on-leader-main`; do not create a branch per revision.
+- User-authorized exception (2026-10-14): LAN UDP relay and Chrome client work stays on independent `feature/lan-udp-relay`. No production deployment, release or main merge is implied.
 - Do not change main, leader-owned branches, stable `v*` tags, or `latest` without explicit authorization.
 - Before building/publishing/updating OCP, read `docs/COMPANY_OCP_RELEASE_RUNBOOK.md` and `docs/ANNOTATION_UAT.md`.
 - Linux/Podman is for image transfer; company OCP commands run in Windows PowerShell, NOT Bash.

@@ -68,6 +68,9 @@ func New(c Config) http.Handler {
 	}))
 	mux.HandleFunc("POST /api/admin/rooms/end", a.administrator(a.endRooms))
 	mux.HandleFunc("POST /api/admin/bandwidth", a.administrator(a.setBandwidth))
+	mux.HandleFunc("GET /api/lan", a.secure(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
+		reply(w, 200, map[string]any{"enabled": a.Hub.LANEnabled()})
+	}))
 	mux.HandleFunc("GET /api/me", a.secure(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		reply(w, 200, map[string]any{"user": s.User, "csrf": s.CSRF, "expiresAt": s.ExpiresAt})
 	}))
@@ -179,7 +182,13 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		http.Error(w, "origin rejected", 403)
 		return
 	}
-	p, e := a.Hub.Join(r.PathValue("id"), s.User, s.ID)
+	var p *meeting.Peer
+	var e error
+	if r.URL.Query().Get("lan") == "1" {
+		p, e = a.Hub.JoinLAN(r.PathValue("id"), s.User, s.ID)
+	} else {
+		p, e = a.Hub.Join(r.PathValue("id"), s.User, s.ID)
+	}
 	if e != nil {
 		fail(w, e)
 		return
@@ -226,6 +235,7 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 				return
 			}
 			var msg struct {
+				LAN        *meeting.LANCommand        `json:"lan"`
 				Annotation *meeting.AnnotationCommand `json:"annotation"`
 				Type       string                     `json:"type"`
 				Level      int                        `json:"level"`
@@ -235,6 +245,10 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 				return
 			}
 			switch msg.Type {
+			case "lan":
+				if msg.LAN == nil || a.Hub.LANControl(p, *msg.LAN) != nil {
+					return
+				}
 			case "annotation":
 				if msg.Annotation == nil {
 					return
@@ -300,6 +314,7 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 			conn.Close(websocket.StatusPolicyViolation, "session expired")
 			return
 		case <-check.C:
+			a.Hub.LANTick()
 			if _, ok := a.Auth.ByID(s.ID); !ok {
 				a.Hub.RevokeSession(s.ID)
 				conn.Close(websocket.StatusPolicyViolation, "session expired")
