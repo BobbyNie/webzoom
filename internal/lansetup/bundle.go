@@ -241,7 +241,7 @@ func (b *Bundle) Provision(origin string, port int) (*Bundle, error) {
 	u, _ := url.Parse(origin)
 	// Keep the existing host-scoped content-script match. Background and native
 	// host additionally require the exact origin, including the configured port.
-	manifest["content_scripts"], _ = json.Marshal([]any{map[string]any{"matches": []string{"https://" + u.Hostname() + "/m/*"}, "js": []string{"content.js"}, "run_at": "document_start", "all_frames": false}})
+	manifest["content_scripts"], _ = json.Marshal([]any{map[string]any{"matches": []string{"https://" + u.Hostname() + "/*"}, "js": []string{"content.js"}, "run_at": "document_start", "all_frames": false}})
 	out.Files["extension/manifest.json"], _ = json.MarshalIndent(manifest, "", "  ")
 	encoded, _ := json.Marshal(origin)
 	out.Files["extension/policy.js"] = append(append([]byte("export const origin = "), encoded...), ';')

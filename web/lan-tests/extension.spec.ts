@@ -12,7 +12,7 @@ test('packaged MV3 loads and missing native installation fails closed', async ()
   await cp(path.resolve('../clients/chrome'), extension, { recursive: true });
   const manifest = JSON.parse(await readFile(path.join(extension, 'manifest.json'), 'utf8'));
   // Chrome match patterns do not contain ports; background.js checks exact origin.
-  manifest.content_scripts = [{ matches: ['https://127.0.0.1/m/*'], js: ['content.js'], run_at: 'document_start', all_frames: false }];
+  manifest.content_scripts = [{ matches: ['https://127.0.0.1/*'], js: ['content.js'], run_at: 'document_start', all_frames: false }];
   await writeFile(path.join(extension, 'manifest.json'), JSON.stringify(manifest));
   await writeFile(path.join(extension, 'policy.js'), 'export const origin = ' + JSON.stringify(origin) + ';');
   const context = await chromium.launchPersistentContext(path.join(temp, 'profile'), {
@@ -26,6 +26,14 @@ test('packaged MV3 loads and missing native installation fails closed', async ()
     await popup.goto(new URL('popup.html', worker.url()).href);
     await popup.getByRole('button', { name: '检查安装和网络' }).click();
     await expect(popup.getByRole('status')).toContainText('尚未安装辅助程序');
+    const onboarding = await context.newPage();
+    await onboarding.goto(origin);
+    await onboarding.getByRole('link',{name:'使用公司账号登录'}).click();
+    await onboarding.getByLabel('用户名').fill('LAN-onboarding');
+    await onboarding.getByRole('button',{name:'登录',exact:true}).click();
+    await expect(onboarding.getByRole('status').filter({hasText:'请先运行配套的 EXE'})).toBeVisible({timeout:10000});
+    await onboarding.close();
+    await context.clearCookies();
     const page = await context.newPage();
     await page.addInitScript(() => sessionStorage.setItem('webzoom-lan', 'true'));
     await page.goto(origin);
@@ -34,7 +42,7 @@ test('packaged MV3 loads and missing native installation fails closed', async ()
     await page.getByRole('button', { name: '登录', exact: true }).click();
     await page.getByRole('button', { name: '创建会议', exact: true }).click();
     await expect(page.getByRole('status').filter({ hasText: '局域网客户端停止' })).toBeVisible();
-    await expect(page.getByRole('checkbox', { name: /使用局域网/ })).toBeChecked();
+    await expect(page.getByRole('button', { name: '退出局域网分流 / 安装客户端' })).toBeVisible();
   } finally {
     await context.close();
   }

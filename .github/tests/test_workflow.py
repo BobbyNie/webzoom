@@ -41,6 +41,19 @@ class ContainerWorkflowTests(unittest.TestCase):
         self.assertNotIn("docker build", publish_text)
         self.assertFalse(any(step.get("uses", "").startswith("docker/build-push-action@") for step in publish["steps"]))
 
+    def test_server_bundles_the_exact_windows_tested_client(self):
+        workflow = yaml.load((ROOT / ".github/workflows/container.yml").read_text(), Loader=yaml.BaseLoader)
+        self.assertEqual(workflow["jobs"]["image"]["needs"], ["windows_lan"])
+        windows = "\n".join(step.get("run", "") for step in workflow["jobs"]["windows_lan"]["steps"])
+        self.assertIn("go run ./cmd/landist -out artifacts/lan-release", windows)
+        steps = workflow["jobs"]["image"]["steps"]
+        compare = next(i for i, step in enumerate(steps) if "cmp artifacts/expected-lan-client" in step.get("run", ""))
+        export = next(i for i, step in enumerate(steps) if "docker save" in step.get("run", ""))
+        self.assertLess(compare, export)
+        dockerfile = (ROOT / "Dockerfile").read_text()
+        self.assertIn("go run ./cmd/landist -out /lan-client", dockerfile)
+        self.assertIn("/app/lan-client/WebZoom-LAN-Setup.exe", dockerfile)
+
     def test_only_publish_job_can_access_configured_docker_hub_environment(self):
         workflow = yaml.load((ROOT / ".github/workflows/container.yml").read_text(), Loader=yaml.BaseLoader)
         self.assertEqual(workflow["jobs"]["publish"].get("environment"), "DOCKERHUB_USERNAME")

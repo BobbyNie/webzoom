@@ -12,7 +12,7 @@ test('real native process self-check and meeting failure are delivered through M
  const temp=await mkdtemp(path.join(base,'run-')),extension=path.join(temp,'extension');
  await cp(path.resolve('../clients/chrome'),extension,{recursive:true});
  const manifest=JSON.parse(await readFile(path.join(extension,'manifest.json'),'utf8'));
- manifest.content_scripts=[{matches:['https://127.0.0.1/m/*'],js:['content.js'],run_at:'document_start',all_frames:false}];
+ manifest.content_scripts=[{matches:['https://127.0.0.1/*'],js:['content.js'],run_at:'document_start',all_frames:false}];
  await writeFile(path.join(extension,'manifest.json'),JSON.stringify(manifest));
  await writeFile(path.join(extension,'policy.js'),'export const origin = '+JSON.stringify(origin)+';');
  for(const file of ['background.js','diagnostic-client.js']) {
@@ -27,11 +27,19 @@ test('real native process self-check and meeting failure are delivered through M
   await popup.getByRole('button',{name:'检查安装和网络'}).click();
   await expect(popup.getByRole('status')).toContainText('找不到安装时选择的唯一网卡');
   await expect(popup.getByRole('status')).toContainText('不要自行关闭公司 VPN');
+    const onboarding = await context.newPage();
+    await onboarding.goto(origin);
+    await onboarding.getByRole('link',{name:'使用公司账号登录'}).click();
+    await onboarding.getByLabel('用户名').fill('LAN-onboarding');
+    await onboarding.getByRole('button',{name:'登录',exact:true}).click();
+    await expect(onboarding.getByRole('status').filter({hasText:'获批网卡不可用'})).toBeVisible({timeout:10000});
+    await onboarding.close();
+    await context.clearCookies();
   const page=await context.newPage();await page.addInitScript(()=>sessionStorage.setItem('webzoom-lan','true'));
   await page.goto(origin);await page.getByRole('link',{name:'使用公司账号登录'}).click();
   await page.getByLabel('用户名').fill('LAN-native-process');await page.getByRole('button',{name:'登录',exact:true}).click();
   await page.getByRole('button',{name:'创建会议',exact:true}).click();
   await expect(page.getByRole('status').filter({hasText:'局域网客户端停止'})).toContainText('获批网卡不可用');
-  await expect(page.getByRole('checkbox',{name:/使用局域网/})).toBeChecked();
+  await expect(page.getByRole('button',{name:'退出局域网分流 / 安装客户端'})).toBeVisible();
  }finally{await context.close()}
 });

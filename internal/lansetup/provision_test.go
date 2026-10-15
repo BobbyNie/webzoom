@@ -46,7 +46,7 @@ func TestProvisionInstallAndNarrowPermissions(t *testing.T) {
 	if err = json.Unmarshal(next.Files["extension/manifest.json"], &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if len(manifest.Permissions) != 1 || manifest.Permissions[0] != "nativeMessaging" || len(manifest.Content) != 1 || len(manifest.Content[0].Matches) != 1 || manifest.Content[0].Matches[0] != "https://approved.example/m/*" {
+	if len(manifest.Permissions) != 1 || manifest.Permissions[0] != "nativeMessaging" || len(manifest.Content) != 1 || len(manifest.Content[0].Matches) != 1 || manifest.Content[0].Matches[0] != "https://approved.example/*" {
 		t.Fatalf("permissions: %+v", manifest)
 	}
 	if string(next.Files["extension/policy.js"]) != `export const origin = "https://approved.example:8443";` {

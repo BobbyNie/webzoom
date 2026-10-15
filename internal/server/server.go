@@ -24,15 +24,21 @@ type Config struct {
 	Hub                     *meeting.Hub
 	StaticDir, MetricsToken string
 	AdminUserIDs            string
+	LANClientDir            string
+	LANClientPort           int
 }
 type app struct {
 	Config
 	admins map[string]bool
+	client *clientDownload
 }
 
 func New(c Config) http.Handler {
 	a := &app{Config: c, admins: make(map[string]bool)}
+	a.prepareClient()
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/lan/client", a.secure(a.clientInfo))
+	mux.HandleFunc("GET /api/lan/client/setup.exe", a.secure(a.downloadClient))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ready\n")) })
 	mux.HandleFunc("GET /auth/login", a.Auth.Login)
@@ -122,7 +128,7 @@ func (a *app) secure(next protected) http.HandlerFunc {
 			http.Error(w, "authentication required", 401)
 			return
 		}
-		if r.Method != "GET" && !a.Auth.CheckMutation(r, s) {
+		if r.Method != "GET" && r.Method != "HEAD" && !a.Auth.CheckMutation(r, s) {
 			http.Error(w, "origin or CSRF check failed", 403)
 			return
 		}

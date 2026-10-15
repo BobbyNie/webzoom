@@ -27,3 +27,5 @@
 .meeting-end-dialog::backdrop { background: rgb(12 28 25 / 55%); }
 
 .lan-panel{max-width:1200px;margin:20px auto;padding:16px 24px;border:1px solid #d8e1e5;border-radius:12px;background:#f5faf8;color:#29453d;font-size:14px}.lan-panel label{display:flex;gap:10px;align-items:center}.lan-panel p{margin:10px 0}.lan-panel small{color:#52665e}
+
+.lan-panel h2{font-size:18px;margin:0 0 12px}.lan-install-prompt{padding:12px;background:#fff5df;border-radius:8px;margin:12px 0}.lan-install-steps{padding-left:24px;line-height:1.8}.lan-install-steps li{margin:10px 0}.lan-actions{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}.lan-panel details{margin:14px 0}.lan-panel summary{cursor:pointer}.lan-checksum{overflow-wrap:anywhere}

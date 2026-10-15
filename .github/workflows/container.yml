@@ -70,7 +70,7 @@ jobs:
       - name: Build site-configurable installable UAT client
         shell: pwsh
         run: |
-          ./scripts/Build-LanClient.ps1 -ConfigureOnInstall -OutputDirectory artifacts/lan-release
+          go run ./cmd/landist -out artifacts/lan-release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $config = & ./artifacts/lan-release/WebZoom-LAN-Setup.exe --inspect | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $config.testOnly -or -not $config.configureOnInstall -or $config.origin -or $config.port) { throw 'Invalid site-configurable package.' }
@@ -137,6 +137,7 @@ jobs:
 
   image:
     name: Build and test non-root image
+    needs: [windows_lan]
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -161,6 +162,18 @@ jobs:
             org.opencontainers.image.licenses=MIT
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Retrieve this commit's tested Windows installer
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tested-lan-client
+          path: artifacts/expected-lan-client
+      - name: Verify the image contains the exact Windows-tested installer
+        run: |
+          container=$(docker create webzoom:local)
+          trap 'docker rm -f "$container" >/dev/null' EXIT
+          docker cp "$container:/app/lan-client/WebZoom-LAN-Setup.exe" artifacts/image-client.exe
+          cmp artifacts/expected-lan-client/WebZoom-LAN-Setup.exe artifacts/image-client.exe
+          sha256sum artifacts/image-client.exe
       - name: Build patched proxy and inspect build-stage images
         run: |
           docker buildx build --load --target frontend --tag webzoom:frontend .

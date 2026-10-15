@@ -94,7 +94,7 @@ func handle(id uintptr) {
 			status("未完成安装：" + err.Error())
 			return
 		}
-		status("辅助程序安装完成。\r\n下一步：通过 IT 批准的方式安装 Chrome 扩展，再点击插件里的「检查安装和网络」。\r\n扩展文件夹：" + dir)
+		status("① 辅助程序已安装。② 安装 Chrome 插件：若 IT 已统一下发，直接刷新会议网页；获批本地试点可点击下面两个按钮，在扩展页加载这个文件夹。③ 刷新网页，自动检查通过后启用分流。\r\n扩展文件夹：" + dir)
 	case 2:
 		p, _, err := installer.Installed()
 		if err != nil {
@@ -111,6 +111,11 @@ func handle(id uintptr) {
 		r, _, _ := shell32.NewProc("ShellExecuteW").Call(mainWindow, uintptr(unsafe.Pointer(ptr("open"))), uintptr(unsafe.Pointer(ptr(dir))), 0, 0, 1)
 		if r <= 32 {
 			status("无法打开扩展文件夹，请联系 IT 检查安装目录。")
+		}
+	case 7:
+		r, _, _ := shell32.NewProc("ShellExecuteW").Call(mainWindow, uintptr(unsafe.Pointer(ptr("open"))), uintptr(unsafe.Pointer(ptr("chrome.exe"))), uintptr(unsafe.Pointer(ptr("chrome://extensions/"))), 0, 1)
+		if r <= 32 {
+			status("请在 Chrome 地址栏输入 chrome://extensions/ 。若公司策略不允许本地加载，请联系 IT 统一下发插件。")
 		}
 	case 4:
 		if bundle.Config.TestOnly {
@@ -235,7 +240,8 @@ func main() {
 	control("BUTTON", "检查本机", 186, 162, 150, 38, 2)
 	control("BUTTON", "打开扩展文件夹", 348, 162, 165, 38, 3)
 	control("BUTTON", "卸载", 525, 162, 150, 38, 4)
-	statusWindow = control("STATIC", "", 24, 226, 680, 185, 0)
+	control("BUTTON", "打开 Chrome 扩展页", 24, 210, 210, 34, 7)
+	statusWindow = control("STATIC", "", 24, 256, 680, 175, 0)
 	initial := "请先确认 IT 已批准使用此软件，再点击「安装 / 修复」。\r\n安装仅影响当前用户，不需要管理员权限，不修改公司网络安全策略。\r\n如果已经安装，可先点击「检查本机」。"
 	if bundle.Config.TestOnly {
 		initial = "此包仅用于本机开发验证，不能安装到公司电脑。\r\n公司候选包需要实际会议网站和 IT 批准的 UDP 端口。"

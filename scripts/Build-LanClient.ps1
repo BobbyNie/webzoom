@@ -27,7 +27,7 @@ $extensionFiles = @('manifest.json','background.js','content.js','popup.html','p
 foreach ($name in $extensionFiles) { Copy-Item -LiteralPath (Join-Path $repo "clients\chrome\$name") -Destination (Join-Path $extension $name) }
 $manifestPath = Join-Path $extension 'manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-if (-not $ConfigureOnInstall) { $manifest | Add-Member -NotePropertyName content_scripts -NotePropertyValue @(@{matches=@("https://$($uri.Host)/m/*");js=@('content.js');run_at='document_start';all_frames=$false}) -Force }
+if (-not $ConfigureOnInstall) { $manifest | Add-Member -NotePropertyName content_scripts -NotePropertyValue @(@{matches=@("https://$($uri.Host)/*");js=@('content.js');run_at='document_start';all_frames=$false}) -Force }
 [IO.File]::WriteAllText($manifestPath,($manifest | ConvertTo-Json -Depth 10),$utf8)
 [IO.File]::WriteAllText((Join-Path $extension 'policy.js'),('export const origin = ' + (ConvertTo-Json $Origin -Compress) + ';'),$utf8)
 $sha = [Security.Cryptography.SHA256]::Create()

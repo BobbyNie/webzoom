@@ -13,7 +13,7 @@ export function checkLocal(runtime, origin, timeoutMS=5000) {
      if(m.protocol!==1) finish({code:'version_mismatch',ok:false});
      else if(m.origin && m.origin!==origin) finish({code:'site_mismatch',ok:false});
      else if(m.code==='local_ready'&&(m.ok!==true||m.origin!==origin||m.broadcastVerified!==false)) finish({code:'invalid_message',ok:false});
-     else finish({code:m.code,ok:m.ok===true&&m.code==='local_ready'});
+     else finish({code:m.code,ok:m.ok===true&&m.code==='local_ready',port:m.port});
     }
    });
    port.onDisconnect.addListener(()=>{const code=disconnectCode(runtime.lastError);finish({code,ok:false})});

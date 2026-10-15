@@ -17,18 +17,25 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/webzoom/ ./cmd/webzoom/
+COPY cmd/lanhost/ ./cmd/lanhost/
+COPY cmd/lansetup/ ./cmd/lansetup/
+COPY cmd/landist/ ./cmd/landist/
+COPY clients/chrome/ ./clients/chrome/
+COPY docs/LAN_CLIENT_QUICKSTART.md ./docs/LAN_CLIENT_QUICKSTART.md
 COPY internal/ ./internal/
 RUN go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /webzoom ./cmd/webzoom
 
+RUN go run ./cmd/landist -out /lan-client
 RUN mkdir -p /runtime/data && chown 65532:0 /runtime/data && chmod 2770 /runtime/data
 
 FROM scratch
 COPY --from=backend /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=backend --chmod=0555 /webzoom /app/webzoom
 COPY --from=frontend /src/web/dist /app/web
+COPY --from=backend --chmod=0444 /lan-client/WebZoom-LAN-Setup.exe /app/lan-client/WebZoom-LAN-Setup.exe
 # Copy the parent tree to retain the data directory mode, including setgid.
 COPY --from=backend --chown=65532:0 /runtime/ /
-ENV LISTEN_ADDR=:8080 STATIC_DIR=/app/web BANDWIDTH_CONFIG_FILE=/data/bandwidth.json
+ENV LISTEN_ADDR=:8080 STATIC_DIR=/app/web LAN_CLIENT_DIR=/app/lan-client BANDWIDTH_CONFIG_FILE=/data/bandwidth.json
 USER 65532:65532
 COPY LICENSE THIRD_PARTY_NOTICES.md /app/licenses/
 COPY licenses/ /app/licenses/

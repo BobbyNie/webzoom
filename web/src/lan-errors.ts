@@ -1,6 +1,7 @@
 // Keep stable native fault codes aligned with clients/chrome/messages.js.
 export function lanErrorText(code: unknown): string {
  const messages:Record<string,string>={
+ port_mismatch:'本机安装的 UDP 端口与服务器配置不同，请重新下载安装包修复，再更新 Chrome 插件。',
  native_missing:'请先运行配套的 EXE 安装程序，再重新加入会议。',
  policy_invalid:'安装配置损坏，请用配套安装程序修复。',
  site_mismatch:'安装包与会议网站不匹配，请使用该网站的配套安装包。',
