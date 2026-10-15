@@ -22,6 +22,10 @@ test('packaged MV3 loads and missing native installation fails closed', async ()
   try {
     const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
     expect(worker.url()).toContain('hmeoffkckocfjcblblfhpmjcighdehfa/background.js');
+    const popup = await context.newPage();
+    await popup.goto(new URL('popup.html', worker.url()).href);
+    await popup.getByRole('button', { name: '检查安装和网络' }).click();
+    await expect(popup.getByRole('status')).toContainText('尚未安装辅助程序');
     const page = await context.newPage();
     await page.addInitScript(() => sessionStorage.setItem('webzoom-lan', 'true'));
     await page.goto(origin);

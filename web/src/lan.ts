@@ -1,3 +1,4 @@
+import {lanErrorText} from './lan-errors';
 // Same-origin, provisioned extension bridge. No cookies/tokens are passed to the helper.
 export interface LANState {role:string;node:string;room:string;group?:string;generation:string;key?:string;public?:string;epoch:number;leaseMs:number;message?:string;token?:string}
 const MAX=1048576+100, CHUNK=32768;
@@ -30,7 +31,7 @@ export class LANClient {
    case 'configured':if(m.generation===this.state?.generation){this.waitingForKey=true;this.command('configured',{generation:m.generation});this.requestKey()}break;
    case 'seen':if(typeof m.node==='string'&&typeof m.token==='string')this.command('seen',{node:m.node,token:m.token});break;
    case 'keyframe':this.recover();break;
-   case 'error':this.fail('局域网客户端停止：请检查获批网卡、UDP 端口、防火墙策略及安装状态。');break;
+   case 'error':this.fail('局域网客户端停止：'+lanErrorText(m.code));break;
    case 'ack':{const pending=this.pending;if(pending&&pending.id===m.id&&pending.index===m.index)pending.resolve();break;}
    case 'chunk':try{const b=this.inbound.add(m);this.post({type:'ack',id:m.id,index:m.index});if(b&&m.id.startsWith(this.state?.generation+'-'))this.video(b)}catch{this.recover()}break;
   }

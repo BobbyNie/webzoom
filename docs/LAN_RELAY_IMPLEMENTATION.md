@@ -1,10 +1,10 @@
 # LAN UDP 分流：基于当前代码的复核与试验实现
 
-- 日期：2026-10-14。
+- 初次实现：2026-10-14；安装体验与真实本机通信验证补充：2026-10-15。
 - 分支：`feature/lan-udp-relay`（用户明确要求独立分支）。
 - 开发基线：`db57caa`，包含共享者 PiP、申请批注及 r2 修复；当日已 fetch 核对远程。不是从旧方案的 `6b7f5b1` 直接开发。
 - 状态：**服务端、网页、Chrome MV3 扩展与 Windows native helper 的试验代码已实现，默认关闭。尚未完成公司实机 G0–G4，不是生产可用性或 20 Mbps 验收声明。**
-- 本轮没有安装客户端、修改注册表/防火墙、推送镜像或操作 OCP/SSO/PVC。旧版 [方案](LAN_RELAY_PROPOSAL.md)、[复核](LAN_RELAY_VERIFICATION.md)、[验收门槛](LAN_RELAY_ACCEPTANCE.md) 保留历史，不覆盖成成功报告。
+- 没有安装正式客户端、修改正式注册/防火墙、推送镜像或操作 OCP/SSO/PVC。2026-10-15 的真实 native IPC 测试仅创建随机命名的 HKCU 测试注册项，结束后移除；不触碰 `com.webzoom.lan`。旧版 [方案](LAN_RELAY_PROPOSAL.md)、[复核](LAN_RELAY_VERIFICATION.md)、[验收门槛](LAN_RELAY_ACCEPTANCE.md) 保留历史，不覆盖成成功报告。
 
 ## 1. 重新判断后的选择
 
@@ -106,40 +106,47 @@ LAN receiver 不收到自己的服务器二进制媒体副本；只收控制。�
 
 最大 1 MiB 帧的封包/IPC 边界有单测；最后复核修正了“750 ms 总寿命短于限速发送时间”的确定性问题，改为有效片段间空闲 750 ms、绝对寿命最多 10 秒，内存配额不变。以虚拟到达时钟驱动真实 pacer/codec，1 Mbps 与 8 Mbps 最大帧均可重组验签，持续零碎片段也不能绕过绝对寿命。**这不是最大帧实时传输通过的证据。** 8 Mbps 下最大帧序列化仍超过 1 秒，现有 Viewer 过期阈值和原验收 p95 门槛均未放宽；最大帧可能被 Viewer 丢弃，必须以真实 VP8 关键帧、最高目标码率及公司设备测 G1，必要时再优化编码/桥接路径，不能把有界重组通过冒充实时性能通过。
 
-## 5. 构建和试点安装
+## 5. EXE 构建和试点安装（2026-10-15 更新）
+
+普通使用者先读 [安装与使用说明](LAN_CLIENT_QUICKSTART.md)。配套组件为 Chrome MV3 + Windows helper，现在另有独立的 **WebZoom-LAN-Setup.exe** 管理入口：安装 / 修复、本机检查、打开扩展文件夹、卸载。
 
 ### 5.1 可复制的本机测试构建
 
 仓库根目录 PowerShell：
 
 ```powershell
-.\scripts\Build-LanClient.ps1 -Origin https://127.0.0.1:8743
+.\scripts\Build-LanClient.ps1 -Origin https://127.0.0.1:8743 -Port 34567 -TestOnly
 ```
 
-输出 `artifacts/lan-client/`：
+输出在 artifacts/lan-client/：
 
-- `extension/`：可供获批开发者加载/管理分发的 MV3 目录；不是已发布 Chrome Web Store 包。
-- `native/webzoom-lan-host.exe`：Windows amd64 helper。
-- `native/bundle.json`：origin、扩展 ID（无凭据）。
-- `Install-LanHost.ps1`、`Uninstall-LanHost.ps1`。
+- **WebZoom-LAN-Setup.exe**：自包含 Windows amd64 安装入口，包含 helper、扩展和网站/端口配置；不依赖 PowerShell 执行策略进行安装。
+- SHA256SUMS.txt、使用说明.md。
+- extension/、native/：供审查与获批分发使用的配套文件；不是已发布的 Web Store 包。
+- 旧 PowerShell 安装/卸载脚本现在仅打开该 EXE，不再维持另一条直接修改注册表的安装路径。
 
-此 origin 只供本机 fixture，**不能用于公司会议**。公司试点必须用批准的真实 HTTPS origin 重新构建，且保持与浏览器地址栏规范化 origin 一致，无结尾斜杠。
+打包脚本会在生成文件之前拒绝与浏览器实际 origin 不一致的写法（大写主机名、默认 :443、空白、Unicode 主机名等）；国际化域名使用浏览器中的 ASCII/punycode 形式。已添加 9 项输入拒绝测试并纳入 Windows 检查。
 
-当前开发扩展 ID：`hmeoffkckocfjcblblfhpmjcighdehfa`。manifest 内是公开开发公钥，不是发布签名私钥。正式渠道必须重新确认固定 ID/签名和分发策略，并据此同时生成扩展与 helper allowlist；不将开发包称为已签名正式安装器。
+以上网站和端口仅用于本机 fixture，**不是公司参数**。标记 TestOnly 的 EXE 拒绝安装和卸载，不会误改真实安装。公司候选包必须使用实际 HTTPS origin 和 IT 批准的 UDP 端口重新构建；不带 TestOnly 也不代表已经获得上线审批。
+
+当前开发扩展 ID：hmeoffkckocfjcblblfhpmjcighdehfa。manifest 内是公开开发公钥，不是发布签名私钥。正式分发仍需确认固定 ID/批准渠道。当前 EXE 未签名，内置 SHA-256 只是损坏检测，不能替代发布者身份校验；当前封包格式尚未支持附加 Authenticode 签名的安装包。
+
+安装器资源明确声明 asInvoker、uiAccess=false。692 字节的 Windows 资源文件与可读 setup.manifest 同时保存在源码里，并用测试检查一致性；重新生成使用固定版本 github.com/akavel/rsrc@v0.10.2，不增加客户端运行库。
 
 ### 5.2 获批后才能安装
 
 1. IT 确认扩展分发、用户目录执行、nativeMessaging、指定程序/UDP 端口/接口的网络规则。不要关闭防火墙/EDR，不建议绕过执行策略。
-2. 每台 LAN 收发端安装扩展 + helper；仅上传的共享者可以保持普通模式。
-3. 在生成的包目录，用本机获批 IPv4 和统一获批 UDP 端口调用 `Install-LanHost.ps1 -InterfaceIP … -Port … -ApprovedByIT`。参数必须由现场确定，本文不虚构公司地址或端口。该开关只是确认，不等于取得 IT 审批。
-4. 安装器仅写 `%LOCALAPPDATA%/WebZoomLAN` 和 `HKCU/Software/Google/Chrome/NativeMessagingHosts/com.webzoom.lan`。升级前退出 LAN 会议/Chrome host；在批准标准用户设备上另测升级和卸载。
-5. 此试验仅支持**一个启用的非回环 IPv4 地址，掩码 /16–/30，有广播能力**；多网卡/VPN、IPv6-only、Wi-Fi、同机多个 LAN 会议和共享 UDP 端口不在支持范围。不能要求用户关闭公司强制 VPN 来迁就原型。
-6. 经单独批准在隔离试验服务设置 `LAN_RELAY_ENABLED=true` 及核定预算。现有 Compose/OCP 配置没有被自动修改，单改示例 .env 不会把变量传入现有容器。
-7. 登录会议，勾选“使用局域网…”；网页会刷新建立 LAN 控制连接。核对“中继/接收/不可用”状态、真实目的广播地址、每组服务器媒体数和退出停流。
+2. 每台 LAN 收发端安装扩展 + helper；仅上传的共享者可以保持普通模式。扩展通过获批方式分发，不自动强装或修改浏览器管理策略。
+3. 双击公司候选包的 EXE，安装前核对网站、程序识别到的唯一网卡及已配置端口。公司网站和端口仍未提供，本轮不能生成公司专用包。
+4. 安装器仅写当前用户的 WebZoomLAN 目录和 Chrome NativeMessaging 注册。每次更新创建新版本目录，文件完整写入后再切换注册；旧版本不覆盖，卸载时处理。未知注册来源、链接/Windows junction 路径、并行安装均拒绝。已知文件被占用或存在额外文件时保留并提示，不能递归误删。
+5. 此试验仍仅支持**一个启用的非回环 IPv4 地址，掩码 /16–/30，有广播能力**；多网卡/VPN、IPv6-only、Wi-Fi、同机多个 LAN 会议和共享 UDP 端口不在已验收范围。不能要求用户关闭公司强制 VPN 来迁就原型。
+6. Chrome 插件点击“检查安装和网络”：真实启动 helper，核对版本、配置、网卡、端口。检查只绑定并立即关闭 UDP socket，**不发送广播**。本机通过不代表双机可达；会议中仍需真实探测。
+7. 经单独批准在隔离试验服务设置 LAN_RELAY_ENABLED=true 及核定预算。现有 Compose/OCP 配置没有被自动修改；客户端安装不会启用公司服务器上的此功能。
+8. 登录会议，勾选“使用局域网…”；网页刷新建立 LAN 控制连接。核对“中继/接收/不可用”状态、真实广播目的地址、每组服务器媒体数和退出停流。
 
-回滚先暂停媒体、核算预算，再退出 LAN 模式或切回已验证版本，不能让全员瞬时恢复直连。卸载脚本只删除已确认注册位置和三份已知文件；扩展通过批准渠道另行移除。
+回滚先暂停媒体、核算预算，再退出 LAN 模式或切回已验证版本，不能让全员瞬时恢复直连。卸载入口不会替用户卸载 Chrome 扩展；通过批准渠道另行移除。
 
-## 6. 本轮验证记录
+## 6. 验证记录（包含 2026-10-15 复测）
 
 本段记录的是本机开发证据，不是公司验收。命令由仓库根目录执行，前端命令进入 web 目录。
 
@@ -148,19 +155,29 @@ LAN receiver 不收到自己的服务器二进制媒体副本；只收控制。�
 | 新路径 Go 包及相关服务测试 | `go test ./internal/lan ./internal/lanhost ./internal/meeting ./internal/server ./cmd/webzoom` 通过；覆盖 50 个模拟接收者只有一份 feed、挑战验证、密钥轮换、预算、转交、来源签名、认证 WSS、撤权。 |
 | 真正 UDP socket | 新增 127.0.0.1 UDP 片段乱序重组、验签、重放/伪造拒绝测试通过；**不是两机广播测试**，没有向办公广播域发包。 |
 | Go 静态检查 | `go vet ./...` 通过。 |
+| 构建与流程复核 | 最新源码重新生成演示 EXE，真实 `--inspect` 确认网站、扩展 ID、端口及 testOnly；9 项打包输入测试、5 份 PowerShell 脚本语法检查、actionlint v1.7.12 通过。 |
+| 文档/工作流/安全策略测试 | 40 项中 39 项通过；原有真实 Trivy CLI 兼容性检查因未配置 TRIVY_BINARY 跳过，未修改该条件。本地策略测试不替代真实漏洞扫描或远程 CI。 |
 | 解析器短时模糊测试 | `FuzzDecode`、`FuzzNativeLength` 各 5 秒通过；仅是有限运行的开发测试，不等于协议安全审核。 |
 | 最大帧限速/缓存边界 | 1/8 Mbps 虚拟到达时钟的最大帧重组验签、硬寿命、满容量探测缓存过期恢复测试通过；不是实际网络延迟测量。 |
 | 全量 Go | Windows 下原有 `internal/bandwidth/TestFileStoreInitialConfigurationAndRestart` 因 POSIX 0600 与 Windows 权限表示不符失败；未屏蔽或修改该测试。Linux 全量/race/漏洞检查未在本轮远程执行。 |
-| 前端类型/单测/构建 | 类型检查、36/36 项单测和生产构建通过；本机 Node 20.18 低于 Vite 建议 20.19+/22.12+，仍记录此警告。CI 保持 Node 22。 |
+| 前端类型/单测/构建 | 类型检查、37/37 项单测和生产构建通过；最终复测用 bundled Node 24.19，未改系统默认 Node，CI 保持 Node 22。早先 Node 20.18 的构建有版本警告，未隐藏。 |
 | 原有浏览器回归 | 62/62 通过，含批注请求、PiP、管理操作与会话续期。 |
 | LAN 浏览器链路 | 2/2 模拟桥测试通过：真实测试 OIDC/TLS/WSS、真实 VP8/WebCrypto、选举与故障切换；native/广播为显式模拟。 |
-| 扩展单测 | 3/3 通过：来源/顶层 frame/路径限制、端口生命周期、消息大小/命令限制。 |
-| 真实 MV3 加载用例 | 已添加 `web/lan-tests/extension.spec.ts`；本机完整 Chromium 在 Node 20 与 bundled Node 24 下均在启动时返回 spawn UNKNOWN，未进入扩展加载断言。**未通过，未改成 skip 或模拟成功**；仍保留 Linux CI 检查。 |
-| Windows helper 打包 | 本机测试 origin 可构建；没有安装、注册、签名发布或运行实际广播。 |
-| PowerShell 脚本 | 构建/安装/卸载三份脚本 AST 语法检查通过；不等于安装、卸载或标准用户策略验收。 |
+| 扩展单测 | 9/9 通过：来源/顶层 frame/路径限制、端口生命周期、大小/命令限制、自检超时、版本/网站不符与假广播成功声明拒绝。 |
+| 真实 MV3 加载用例 | 2026-10-14 原缓存浏览器启动失败；2026-10-15 查到 Windows SideBySide 错误，重新下载官方 Chromium 到隔离测试目录后 **1/1 通过**。真实 MV3、content script、弹窗自检和缺失 helper 提示均进入断言；没有放宽断言、跳过或禁用浏览器安全策略。 |
+| Windows helper 打包 | helper 与自包含 Setup EXE 可构建；真实 EXE --inspect 读出测试配置通过；asInvoker 资源一致性测试通过。没有安装正式客户端、签名发布或运行公司广播。 |
+| PowerShell 脚本 | 构建、两个兼容入口、真实 native IPC 试验脚本均需保持 AST 检查通过；不等于标准用户企业策略验收。 |
 | 工作流/文档约束 | 本地现有 PyYAML 依赖下工作流安全规则 3/3、文档规则 3/3 通过；文档测试使用进程内 `PYTHONUTF8=1`，不修改系统编码。远程 CI 未执行。 |
 
-新增 CI 检查保留原 race/vet/govulncheck/audit/镜像与漏洞发布门槛，并加 Windows helper 交叉构建、扩展单测与 LAN 浏览器测试。此处修改工作流**不等于已运行/通过远程 CI**。
+新增 CI 检查保留原 race/vet/govulncheck/audit/镜像与漏洞发布门槛；Windows 客户端检查成为 quality 的前置条件，包含安装器/真实 EXE、打包、真实 MV3 和临时注册的 native IPC。Linux 全量检查仍保留并交叉构建两份 EXE。此处修改工作流**不等于已运行/通过远程 CI**。
+
+### 2026-10-15 新增的真实本机证据与边界
+
+- 真实 Chrome → MV3 → Windows helper：自检消息往返与会议页面显示 helper 的具体网卡错误，1/1 通过。测试使用单独的随机 host 名、独立浏览器 profile、保留生产调用方检查；fixture 的 interfaceIP=0.0.0.0 保证在 socket 绑定前拒绝。**这不是完整媒体或双机广播测试**。
+- 安装器 Windows 注册后端：在随机测试键验证 Unicode 路径的写入、读取、更新、删除，测试清理后核对；不碰正式 host 键。修复了 HKCU 32/64 位视图可能共享同一注册值时的误判；非法字符串在创建注册项前拒绝，并检查不会留下不完整注册项。
+- 安装器文件系统/模拟注册测试：路径穿越、重复条目、压缩包损坏/大小、演示包拒绝、并发锁、未知安装保护、更新失败保留旧版、旧布局升级卸载、额外文件保留与重试、丢失 helper、Windows junction 拒绝。真实 Windows junction 测试曾捕获一次路径绕转问题，已修复并复测，未改为跳过。
+- Native 可执行进程：真实编译/启动 helper，验证长度前缀 IPC、自检、错误网站、版本不匹配、非批准扩展拒绝；没有注册正式 helper 或向公司网络发包。
+- 本机自检不是防火墙放行证明，更不是广播可达性证明。真实窗口人工操作、公司标准用户/EDR 安装、已签名分发仍未验收。
 
 ## 7. 尚须完成、不得隐去的门槛
 
@@ -179,4 +196,6 @@ LAN receiver 不收到自己的服务器二进制媒体副本；只收控制。�
 - `internal/lanhost/`、`cmd/lanhost/`：Windows helper 与 socket 边界。
 - `clients/chrome/`：MV3、隔离桥、来源限制及单测。
 - `web/src/lan.ts`：网页媒体桥/流控；`web/lan-tests/`：显式模拟链路及真实扩展加载用例。
-- `scripts/Build-LanClient.ps1`、`Install-LanHost.ps1`、`Uninstall-LanHost.ps1`：构建和普通用户安装路径。
+- `internal/lansetup/`、`cmd/lansetup/`、`cmd/lanpack/`：自包含 EXE、普通用户管理窗口、安装安全边界。
+- `scripts/Build-LanClient.ps1`：生成配套包；`scripts/Test-LanNativeBridge.ps1`：真实 Windows/Chrome IPC 与隔离注册验证。
+- `clients/chrome/popup.js`、`diagnostic-client.js`：中文自检入口；`web/src/lan-errors.ts`：会议中的可操作提示。

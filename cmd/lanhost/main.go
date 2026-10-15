@@ -4,8 +4,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"webzoom/internal/lan"
 	"webzoom/internal/lanhost"
 )
 
@@ -16,10 +19,17 @@ func main() {
 	}
 	b, e := os.ReadFile(filepath.Join(filepath.Dir(exe), "policy.json"))
 	var p lanhost.Policy
-	if e != nil || len(b) > 8192 || json.Unmarshal(b, &p) != nil || len(os.Args) < 2 || p.Validate(os.Args[1]) != nil {
+	if e != nil || len(b) > 8192 || json.Unmarshal(b, &p) != nil {
+		lan.WriteMessage(os.Stdout, map[string]any{"type": "error", "code": "policy_invalid"})
+		os.Exit(1)
+	}
+	if len(os.Args) < 2 || p.Validate(os.Args[1]) != nil {
 		os.Exit(1)
 	}
 	if e = lanhost.Run(context.Background(), p, os.Stdin, os.Stdout); e != nil {
+		if !errors.Is(e, io.EOF) {
+			lan.WriteMessage(os.Stdout, map[string]any{"type": "error", "code": lanhost.ErrorCode(e)})
+		}
 		os.Exit(1)
 	}
 }

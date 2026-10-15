@@ -122,27 +122,49 @@ type Host struct {
 	relay            chan []byte
 	ack              chan lan.Chunk
 	ctx              context.Context
-	stop             context.CancelFunc
-	started          bool
+	fatal            chan error
 	lastProbe        time.Time
 	lastSeq          uint32
 	hasSeq           bool
 }
 
 func Run(ctx context.Context, p Policy, in io.Reader, out io.Writer) error {
+	if p.Validate("chrome-extension://"+p.ExtensionID+"/") != nil {
+		return fault("policy_invalid", nil)
+	}
+	// Authorize the first command before acquiring a socket or starting workers.
+	var first command
+	if e := lan.ReadMessage(in, &first); e != nil {
+		return e
+	}
+	if first.Origin != p.Origin {
+		return fault("site_mismatch", nil)
+	}
+	if first.Protocol != 1 {
+		return fault("version_mismatch", nil)
+	}
+	if first.Type == "diagnose" {
+		return lan.WriteMessage(out, Diagnose(p))
+	}
+	if first.Type != "start" {
+		return lan.ErrInvalid
+	}
 	network, e := ApprovedNetwork(p.InterfaceIP)
 	if e != nil {
-		return e
+		return fault("network_unsupported", e)
 	}
 	conn, e := listenUDP(p.Port)
 	if e != nil {
-		return fmt.Errorf("approved UDP port unavailable: %w", e)
+		return fault("port_unavailable", e)
 	}
 	defer conn.Close()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	h := &Host{policy: p, network: network, conn: conn, dest: &net.UDPAddr{IP: Broadcast(network), Port: p.Port}, output: make(chan any, 32), frames: make(chan nativeFrame, 1), relay: make(chan []byte, 1), ack: make(chan lan.Chunk, 1), ctx: ctx, stop: cancel}
+	h := &Host{policy: p, network: network, conn: conn, dest: &net.UDPAddr{IP: Broadcast(network), Port: p.Port}, output: make(chan any, 32), frames: make(chan nativeFrame, 1), relay: make(chan []byte, 1), ack: make(chan lan.Chunk, 1), ctx: ctx, fatal: make(chan error, 1)}
+	writerDone := make(chan struct{})
+	defer func() { cancel(); <-writerDone }()
 	go func() {
+		defer close(writerDone)
 		for {
 			select {
 			case <-ctx.Done():
@@ -155,6 +177,7 @@ func Run(ctx context.Context, p Policy, in io.Reader, out io.Writer) error {
 			}
 		}
 	}()
+	h.emit(map[string]any{"type": "started", "protocol": 1})
 	go h.receive()
 	go h.sendFrames()
 	go h.sendUDP()
@@ -181,17 +204,11 @@ func Run(ctx context.Context, p Policy, in io.Reader, out io.Writer) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case err := <-h.fatal:
+			return err
 		case c, ok := <-commands:
 			if !ok {
 				return <-readError
-			}
-			if !h.started {
-				if c.Type != "start" || c.Origin != p.Origin || c.Protocol != 1 {
-					return lan.ErrInvalid
-				}
-				h.started = true
-				h.emit(map[string]any{"type": "started", "protocol": 1})
-				continue
 			}
 			switch c.Type {
 			case "configure":
@@ -231,6 +248,12 @@ func Run(ctx context.Context, p Policy, in io.Reader, out io.Writer) error {
 				return lan.ErrInvalid
 			}
 		}
+	}
+}
+func (h *Host) fail(code string) {
+	select {
+	case h.fatal <- fault(code, nil):
+	default:
 	}
 }
 func (h *Host) emit(v any) bool {
@@ -495,8 +518,8 @@ func (h *Host) sendUDP() {
 					}
 				}
 				if _, e = h.conn.WriteToUDP(packet, h.dest); e != nil {
-					h.emit(map[string]any{"type": "error", "message": "UDP send failed"})
-					break
+					h.fail("udp_send_failed")
+					return
 				}
 
 			}
@@ -515,15 +538,15 @@ func (h *Host) watch() {
 			// An adapter/VPN/address change invalidates this process; never silently reroute.
 			network, err := ApprovedNetwork(h.policy.InterfaceIP)
 			if err != nil || !network.IP.Equal(h.network.IP) || network.Mask.String() != h.network.Mask.String() {
-				h.emit(map[string]any{"type": "error", "message": "Approved adapter changed; reconnect required"})
-				h.stop()
+				h.fail("adapter_changed")
 				return
 			}
 			h.mu.Lock()
 			expired := !h.lease.IsZero() && !time.Now().Before(h.lease)
 			h.mu.Unlock()
 			if expired {
-				h.emit(map[string]any{"type": "error", "message": "LAN authorization lease expired; reconnect required"})
+				h.fail("lease_expired")
+				return
 			} else {
 				h.emit(map[string]any{"type": "heartbeat"})
 			}

@@ -18,8 +18,49 @@ env:
   CI: 'true'
 
 jobs:
+  windows_lan:
+    name: Windows LAN client and real native bridge
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Test installer and native executable without production registration
+        shell: pwsh
+        run: |
+          go test ./internal/lan ./internal/lanhost ./internal/lansetup ./cmd/lanhost ./cmd/lansetup
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/Test-LanClientInputs.ps1
+          ./scripts/Build-LanClient.ps1 -Origin https://127.0.0.1:8743 -Port 34567 -TestOnly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $config = & ./artifacts/lan-client/WebZoom-LAN-Setup.exe --inspect | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or -not $config.testOnly) { throw 'Invalid demo package.' }
+      - name: Install isolated test browser dependencies
+        working-directory: web
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx playwright install chromium --no-shell
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx playwright test --config playwright.lan.config.ts extension.spec.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise real Chrome and native IPC, then remove test registration
+        shell: pwsh
+        run: ./scripts/Test-LanNativeBridge.ps1
+
   quality:
     name: Go, browser and workflow checks
+    needs: [windows_lan]
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -45,13 +86,14 @@ jobs:
           go test -race ./...
           go vet ./...
           GOOS=windows GOARCH=amd64 go build -o "$RUNNER_TEMP/webzoom-lan-host.exe" ./cmd/lanhost
+          GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui" -o "$RUNNER_TEMP/WebZoom-LAN-Setup.exe" ./cmd/lansetup
           go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
       - name: Frontend tests and production build
         working-directory: web
         run: |
           npm ci
           npm test
-          node --test ../clients/chrome/background.test.mjs
+          node --test ../clients/chrome/*.test.mjs
           npm run build
           npm audit --audit-level=low
           npm audit --prefix ../.github/security/npm --audit-level=low
