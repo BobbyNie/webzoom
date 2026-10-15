@@ -27,7 +27,11 @@ class LANClientWorkflowTests(unittest.TestCase):
         workflow = yaml.load((ROOT / '.github/workflows/container.yml').read_text(), Loader=yaml.BaseLoader)
         steps = workflow['jobs']['windows_lan']['steps']
         text = '\n'.join(step.get('run', '') for step in steps)
-        self.assertIn('-ConfigureOnInstall', text)
+        self.assertIn('go run ./cmd/landist -out artifacts/lan-release', text)
+        self.assertIn('./artifacts/lan-release/WebZoom-LAN-Setup.exe --inspect', text)
+        self.assertIn('$config.testOnly -or -not $config.configureOnInstall -or $config.origin -or $config.port', text)
+        builder = (ROOT / 'cmd/landist/main.go').read_text(encoding='utf-8')
+        self.assertIn('ConfigureOnInstall: true', builder)
         self.assertIn('Test-LanDeployment.ps1', text)
         self.assertTrue(any(step.get('shell') == 'powershell' and 'Test-LanDeployment.ps1' in step.get('run', '') for step in steps))
         artifact = next(step for step in steps if step.get('with', {}).get('name') == 'tested-lan-client')
