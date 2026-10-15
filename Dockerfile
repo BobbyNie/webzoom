@@ -25,14 +25,20 @@ COPY docs/LAN_CLIENT_QUICKSTART.md ./docs/LAN_CLIENT_QUICKSTART.md
 COPY internal/ ./internal/
 RUN go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /webzoom ./cmd/webzoom
 
-RUN go run ./cmd/landist -out /lan-client
+RUN go run ./cmd/landist -out /lan-client && \
+    mkdir -p /client-runtime/app/lan-client && \
+    cp /lan-client/WebZoom-LAN-Setup.exe /client-runtime/app/lan-client/ && \
+    chmod 0555 /client-runtime/app /client-runtime/app/lan-client && \
+    chmod 0444 /client-runtime/app/lan-client/WebZoom-LAN-Setup.exe
 RUN mkdir -p /runtime/data && chown 65532:0 /runtime/data && chmod 2770 /runtime/data
 
 FROM scratch
 COPY --from=backend /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=backend --chmod=0555 /webzoom /app/webzoom
 COPY --from=frontend /src/web/dist /app/web
-COPY --from=backend --chmod=0444 /lan-client/WebZoom-LAN-Setup.exe /app/lan-client/WebZoom-LAN-Setup.exe
+# Copy the parent tree: --chmod=0444 on a file COPY also makes auto-created
+# parent directories non-traversable. Keep directories 0555 and the EXE 0444.
+COPY --from=backend /client-runtime/ /
 # Copy the parent tree to retain the data directory mode, including setgid.
 COPY --from=backend --chown=65532:0 /runtime/ /
 ENV LISTEN_ADDR=:8080 STATIC_DIR=/app/web LAN_CLIENT_DIR=/app/lan-client BANDWIDTH_CONFIG_FILE=/data/bandwidth.json

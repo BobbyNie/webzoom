@@ -53,6 +53,12 @@ class ContainerWorkflowTests(unittest.TestCase):
         dockerfile = (ROOT / "Dockerfile").read_text()
         self.assertIn("go run ./cmd/landist -out /lan-client", dockerfile)
         self.assertIn("/app/lan-client/WebZoom-LAN-Setup.exe", dockerfile)
+        self.assertIn("COPY --from=backend /client-runtime/ /", dockerfile)
+        self.assertIn("chmod 0555 /client-runtime/app /client-runtime/app/lan-client", dockerfile)
+        self.assertNotIn("COPY --from=backend --chmod=0444", dockerfile)
+        probe = (ROOT / "internal/deploy/lan_client_test.go").read_text()
+        self.assertIn("1001230000:0", probe)
+        self.assertIn('"--read-only", "--network", "none"', probe)
 
     def test_only_publish_job_can_access_configured_docker_hub_environment(self):
         workflow = yaml.load((ROOT / ".github/workflows/container.yml").read_text(), Loader=yaml.BaseLoader)
