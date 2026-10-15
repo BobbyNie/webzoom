@@ -12,6 +12,8 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"webzoom/internal/lanhost"
 )
 
@@ -22,10 +24,11 @@ const maxBundle = 32 << 20
 var files = []string{"native/webzoom-lan-host.exe", "native/bundle.json", "extension/manifest.json", "extension/background.js", "extension/content.js", "extension/policy.js", "extension/popup.html", "extension/popup.js", "extension/messages.js", "extension/diagnostic-client.js"}
 
 type Config struct {
-	Origin      string `json:"origin"`
-	ExtensionID string `json:"extensionId"`
-	Port        int    `json:"port"`
-	TestOnly    bool   `json:"testOnly"`
+	Origin             string `json:"origin"`
+	ExtensionID        string `json:"extensionId"`
+	Port               int    `json:"port"`
+	TestOnly           bool   `json:"testOnly"`
+	ConfigureOnInstall bool   `json:"configureOnInstall,omitempty"`
 }
 type Bundle struct {
 	Config Config
@@ -33,6 +36,15 @@ type Bundle struct {
 }
 
 func (c Config) Validate() error {
+	if c.ConfigureOnInstall {
+		if c.Origin != "" || c.Port != 0 || c.TestOnly || len(c.ExtensionID) != 32 || strings.Trim(c.ExtensionID, "abcdefghijklmnop") != "" {
+			return errors.New("待配置安装包不能预置网站、端口或演示模式")
+		}
+		return nil
+	}
+	if err := validateOrigin(c.Origin); err != nil {
+		return err
+	}
 	p := lanhost.Policy{Origin: c.Origin, ExtensionID: c.ExtensionID, Port: c.Port, InterfaceIP: "192.0.2.1", MaxMbps: 8}
 	if p.Validate("chrome-extension://"+c.ExtensionID+"/") != nil {
 		return errors.New("安装包的网站、扩展 ID 或端口配置无效")
@@ -159,4 +171,80 @@ func AppendBundle(stub, archive, target string) error {
 		return err
 	}
 	return out.Sync()
+}
+
+// Accept only the exact browser-serialized HTTPS origin, never a URL prefix or wildcard.
+func validateOrigin(origin string) error {
+	invalid := errors.New("请填写准确的 HTTPS 网站来源：小写 ASCII 主机名，不含路径、结尾斜杠、账号或默认 :443 端口")
+	u, err := url.Parse(origin)
+	if err != nil || u.Scheme != "https" || u.Host == "" || origin != "https://"+u.Host || u.User != nil {
+		return invalid
+	}
+	host := u.Hostname()
+	if len(host) > 253 || strings.ToLower(host) != host || strings.HasSuffix(host, ".") {
+		return invalid
+	}
+	for _, label := range strings.Split(host, ".") {
+		if len(label) == 0 || len(label) > 63 || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+			return invalid
+		}
+		for _, r := range label {
+			if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
+				return invalid
+			}
+		}
+	}
+	last := strings.Split(host, ".")[len(strings.Split(host, "."))-1]
+	if _, numeric := strconv.ParseUint(last, 0, 64); numeric == nil || strings.Trim(last, "0123456789") == "" {
+		ip := net.ParseIP(host)
+		if ip.To4() == nil || ip.String() != host {
+			return invalid
+		}
+	}
+	if u.Port() != "" {
+		p, e := strconv.Atoi(u.Port())
+		if e != nil || p < 1 || p > 65535 || p == 443 || strconv.Itoa(p) != u.Port() {
+			return invalid
+		}
+		if u.Host != host+":"+u.Port() {
+			return invalid
+		}
+	} else if u.Host != host {
+		return invalid
+	}
+	return nil
+}
+
+// Provision makes a private copy. An unconfigured bundle grants no website access.
+func (b *Bundle) Provision(origin string, port int) (*Bundle, error) {
+	if b == nil || !b.Config.ConfigureOnInstall {
+		return nil, errors.New("此安装包不是现场配置模式")
+	}
+	if err := b.Config.Validate(); err != nil {
+		return nil, err
+	}
+	c := b.Config
+	c.ConfigureOnInstall = false
+	c.Origin = origin
+	c.Port = port
+	if err := c.Validate(); err != nil {
+		return nil, err
+	}
+	out := &Bundle{Config: c, Files: make(map[string][]byte, len(b.Files))}
+	for k, v := range b.Files {
+		out.Files[k] = bytes.Clone(v)
+	}
+	var manifest map[string]json.RawMessage
+	if err := json.Unmarshal(out.Files["extension/manifest.json"], &manifest); err != nil || manifest == nil {
+		return nil, errors.New("扩展清单无效")
+	}
+	u, _ := url.Parse(origin)
+	// Keep the existing host-scoped content-script match. Background and native
+	// host additionally require the exact origin, including the configured port.
+	manifest["content_scripts"], _ = json.Marshal([]any{map[string]any{"matches": []string{"https://" + u.Hostname() + "/m/*"}, "js": []string{"content.js"}, "run_at": "document_start", "all_frames": false}})
+	out.Files["extension/manifest.json"], _ = json.MarshalIndent(manifest, "", "  ")
+	encoded, _ := json.Marshal(origin)
+	out.Files["extension/policy.js"] = append(append([]byte("export const origin = "), encoded...), ';')
+	out.Files["native/bundle.json"], _ = json.Marshal(c)
+	return out, nil
 }

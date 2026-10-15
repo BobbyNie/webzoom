@@ -22,3 +22,14 @@ class LANClientWorkflowTests(unittest.TestCase):
         self.assertIn('finally', script)
         self.assertIn('Remove-Item -LiteralPath $key', script)
         self.assertNotIn('-Recurse', script)
+
+    def test_installable_client_and_deployment_are_gated(self):
+        workflow = yaml.load((ROOT / '.github/workflows/container.yml').read_text(), Loader=yaml.BaseLoader)
+        steps = workflow['jobs']['windows_lan']['steps']
+        text = '\n'.join(step.get('run', '') for step in steps)
+        self.assertIn('-ConfigureOnInstall', text)
+        self.assertIn('Test-LanDeployment.ps1', text)
+        self.assertTrue(any(step.get('shell') == 'powershell' and 'Test-LanDeployment.ps1' in step.get('run', '') for step in steps))
+        artifact = next(step for step in steps if step.get('with', {}).get('name') == 'tested-lan-client')
+        self.assertEqual(artifact['with']['if-no-files-found'], 'error')
+        self.assertNotIn('if', artifact)

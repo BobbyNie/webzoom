@@ -57,6 +57,27 @@ jobs:
       - name: Exercise real Chrome and native IPC, then remove test registration
         shell: pwsh
         run: ./scripts/Test-LanNativeBridge.ps1
+      - name: Build site-configurable installable UAT client
+        shell: pwsh
+        run: |
+          ./scripts/Build-LanClient.ps1 -ConfigureOnInstall -OutputDirectory artifacts/lan-release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $config = & ./artifacts/lan-release/WebZoom-LAN-Setup.exe --inspect | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $config.testOnly -or -not $config.configureOnInstall -or $config.origin -or $config.port) { throw 'Invalid site-configurable package.' }
+          ./scripts/Test-LanDeployment.ps1
+      - name: Test deployment script on company Windows PowerShell version
+        shell: powershell
+        run: ./scripts/Test-LanDeployment.ps1
+      - name: Keep the tested Windows client
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tested-lan-client
+          path: |
+            artifacts/lan-release/WebZoom-LAN-Setup.exe
+            artifacts/lan-release/SHA256SUMS.txt
+            artifacts/lan-release/使用说明.md
+          retention-days: 7
+          if-no-files-found: error
 
   quality:
     name: Go, browser and workflow checks

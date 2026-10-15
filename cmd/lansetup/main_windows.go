@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strconv"
 	"syscall"
 	"unsafe"
 	"webzoom/internal/lanhost"
@@ -27,6 +28,13 @@ var statusWindow, mainWindow uintptr
 var installer *lansetup.Installer
 var bundle *lansetup.Bundle
 var font uintptr
+var originWindow, portWindow uintptr
+
+func textOf(hwnd uintptr) string {
+	var buf [512]uint16
+	user32.NewProc("GetWindowTextW").Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	return syscall.UTF16ToString(buf[:])
+}
 
 func ptr(s string) *uint16 { p, _ := syscall.UTF16PtrFromString(s); return p }
 func status(s string)      { setText.Call(statusWindow, uintptr(unsafe.Pointer(ptr(s)))) }
@@ -53,17 +61,35 @@ func handle(id uintptr) {
 			status("这是本机演示包，不允许安装。请获取对应公司会议网站的候选包。")
 			return
 		}
+		candidate := bundle
+		if bundle.Config.ConfigureOnInstall {
+			port, err := strconv.Atoi(textOf(portWindow))
+			if err != nil {
+				status("请填写 IT 批准的 UDP 端口（1024–65535）")
+				return
+			}
+			candidate, err = bundle.Provision(textOf(originWindow), port)
+			if err != nil {
+				status(err.Error())
+				return
+			}
+		}
+		target, err := lansetup.NewInstaller(os.Getenv("LOCALAPPDATA"), lansetup.UserRegistry{}, candidate)
+		if err != nil {
+			status(err.Error())
+			return
+		}
 		ip, err := lansetup.AutoInterface()
 		if err != nil {
 			status(err.Error())
 			return
 		}
-		text := fmt.Sprintf("仅当 IT 已批准此软件及以下网络设置后继续。\r\n\r\n会议网站：%s\r\n本机 IPv4：%s\r\nUDP 端口：%d\r\n\r\n只安装到当前用户目录；不会修改防火墙、VPN、Chrome 策略或公司服务器。\r\n请先退出 LAN 会议。确认安装 / 修复？", bundle.Config.Origin, ip, bundle.Config.Port)
+		text := fmt.Sprintf("仅当 IT 已批准此软件及以下网络设置后继续。\r\n\r\n会议网站：%s\r\n本机 IPv4：%s\r\nUDP 端口：%d\r\n\r\n只安装到当前用户目录；不会修改防火墙、VPN、Chrome 策略或公司服务器。\r\n请先退出 LAN 会议。确认安装 / 修复？", candidate.Config.Origin, ip, candidate.Config.Port)
 		if dialog(text, 0x24|0x100) != 6 {
 			return
 		}
 		status("正在安装，请稍候…")
-		dir, err := installer.Install(ip)
+		dir, err := target.Install(ip)
 		if err != nil {
 			status("未完成安装：" + err.Error())
 			return
@@ -134,6 +160,9 @@ func windowProc(hwnd uintptr, message uint32, wparam, lparam uintptr) uintptr {
 }
 func control(class, text string, x, y, w, h int32, id uintptr) uintptr {
 	styles := uintptr(0x50000000)
+	if class == "EDIT" {
+		styles |= 0x00810080
+	} // border, tab stop, horizontal scrolling
 	if class == "BUTTON" {
 		styles |= 0x10000
 	}
@@ -187,7 +216,21 @@ func main() {
 		heading += "（演示包，禁止安装）"
 	}
 	control("STATIC", heading, 24, 20, 680, 30, 0)
-	control("STATIC", fmt.Sprintf("对应网站：%s\r\nUDP 端口：%d\r\n辅助程序负责广播，Chrome 插件连接会议网页。两者必须配套。", bundle.Config.Origin, bundle.Config.Port), 24, 58, 680, 90, 0)
+	if bundle.Config.ConfigureOnInstall {
+		origin, port := "", ""
+		if p, _, e := installer.Installed(); e == nil {
+			origin = p.Origin
+			port = strconv.Itoa(p.Port)
+		}
+		control("STATIC", "会议网站（HTTPS，不含路径和结尾斜杠）：", 24, 56, 680, 24, 0)
+		originWindow = control("EDIT", origin, 24, 82, 650, 26, 5)
+		control("STATIC", "IT 批准的 UDP 端口：", 24, 119, 210, 24, 0)
+		portWindow = control("EDIT", port, 244, 115, 150, 27, 6)
+		user32.NewProc("SendMessageW").Call(originWindow, 0xc5, 500, 0)
+		user32.NewProc("SendMessageW").Call(portWindow, 0xc5, 5, 0)
+	} else {
+		control("STATIC", fmt.Sprintf("对应网站：%s\r\nUDP 端口：%d\r\n辅助程序负责广播，Chrome 插件连接会议网页。两者必须配套。", bundle.Config.Origin, bundle.Config.Port), 24, 58, 680, 90, 0)
+	}
 	control("BUTTON", "安装 / 修复", 24, 162, 150, 38, 1)
 	control("BUTTON", "检查本机", 186, 162, 150, 38, 2)
 	control("BUTTON", "打开扩展文件夹", 348, 162, 165, 38, 3)

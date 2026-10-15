@@ -118,6 +118,9 @@ func (i *Installer) Install(ip string) (string, error) {
 	if err := c.Validate(); err != nil {
 		return "", err
 	}
+	if c.ConfigureOnInstall {
+		return "", errors.New("请先填写会议网站和 IT 批准的 UDP 端口")
+	}
 	if c.TestOnly {
 		return "", errors.New("这是本机演示包，禁止注册安装。请获取对应公司会议网站的正式候选包")
 	}

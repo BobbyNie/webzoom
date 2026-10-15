@@ -1,12 +1,14 @@
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName="Fixed")]
 param(
- [Parameter(Mandatory=$true)][string]$Origin,
- [Parameter(Mandatory=$true)][ValidateRange(1024,65535)][int]$Port,
- [switch]$TestOnly,
+ [Parameter(Mandatory=$true,ParameterSetName="Fixed")][string]$Origin,
+ [Parameter(Mandatory=$true,ParameterSetName="Fixed")][ValidateRange(1024,65535)][int]$Port,
+ [Parameter(ParameterSetName="Fixed")][switch]$TestOnly,
+ [Parameter(Mandatory=$true,ParameterSetName="Site")][switch]$ConfigureOnInstall,
  [string]$OutputDirectory
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
+if (-not $ConfigureOnInstall) {
 $uri = [Uri]$Origin
 if ($uri.Scheme -ne 'https' -or -not $uri.Host -or $uri.UserInfo -or $uri.Query -or $uri.Fragment -or $uri.AbsolutePath -ne '/' -or $Origin.EndsWith('/')) { throw 'Origin must be an exact HTTPS origin without a trailing slash.' }
 # The browser sends its serialized origin, not the operator's spelling. Reject
@@ -14,6 +16,7 @@ if ($uri.Scheme -ne 'https' -or -not $uri.Host -or $uri.UserInfo -or $uri.Query 
 $canonical = $uri.GetComponents([UriComponents]::SchemeAndServer,[UriFormat]::UriEscaped)
 if ($Origin -cne $canonical -or $Origin -match '[^\x21-\x7e]') { throw 'Origin must match the browser HTTPS origin exactly: lowercase ASCII host, no default :443, whitespace or Unicode (use the punycode hostname).' }
 if ($uri.IsLoopback -and -not $TestOnly) { throw 'Localhost packages must use -TestOnly; they cannot be installed.' }
+}
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $repo 'artifacts\lan-client' }
 $out = [IO.Path]::GetFullPath($OutputDirectory)
 $extension = Join-Path $out 'extension'
@@ -24,7 +27,7 @@ $extensionFiles = @('manifest.json','background.js','content.js','popup.html','p
 foreach ($name in $extensionFiles) { Copy-Item -LiteralPath (Join-Path $repo "clients\chrome\$name") -Destination (Join-Path $extension $name) }
 $manifestPath = Join-Path $extension 'manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$manifest | Add-Member -NotePropertyName content_scripts -NotePropertyValue @(@{matches=@("https://$($uri.Host)/m/*");js=@('content.js');run_at='document_start';all_frames=$false}) -Force
+if (-not $ConfigureOnInstall) { $manifest | Add-Member -NotePropertyName content_scripts -NotePropertyValue @(@{matches=@("https://$($uri.Host)/m/*");js=@('content.js');run_at='document_start';all_frames=$false}) -Force }
 [IO.File]::WriteAllText($manifestPath,($manifest | ConvertTo-Json -Depth 10),$utf8)
 [IO.File]::WriteAllText((Join-Path $extension 'policy.js'),('export const origin = ' + (ConvertTo-Json $Origin -Compress) + ';'),$utf8)
 $sha = [Security.Cryptography.SHA256]::Create()
@@ -45,7 +48,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Setup build failed.' }
  } finally { Pop-Location }
 } finally { $env:GOOS=$oldOS; $env:GOARCH=$oldArch }
-$config = @{origin=$Origin;extensionId=$id;port=$Port;testOnly=[bool]$TestOnly}
+$config = @{origin=$Origin;extensionId=$id;port=$Port;testOnly=[bool]$TestOnly;configureOnInstall=[bool]$ConfigureOnInstall}
 [IO.File]::WriteAllText((Join-Path $native 'bundle.json'),($config | ConvertTo-Json),$utf8)
 # Explicit entries only: stale files from older builds cannot enter the executable.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
