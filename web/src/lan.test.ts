@@ -1,7 +1,8 @@
+import {Buffer} from 'node:buffer';
 import {describe,it,expect,vi,afterEach} from 'vitest';
 import {LANClient,NativeChunks,toBase64,fromBase64,type LANState} from './lan';
 describe('LAN bounded native bridge',()=>{
- it('round trips maximum signed frame with chunks below 64 KiB JSON',()=>{const raw=new Uint8Array(1048676).fill(128);const chunks=new NativeChunks();let result:ArrayBuffer|null=null;const count=Math.ceil(raw.length/32768);for(let i=0;i<count;i++){const v={id:'generation-frame',index:i,count,data:toBase64(raw.subarray(i*32768,(i+1)*32768))};expect(JSON.stringify(v).length).toBeLessThan(65536);result=chunks.add(v,100)}expect(new Uint8Array(result!)).toEqual(raw)});
+ it('round trips maximum signed frame with chunks below 64 KiB JSON',()=>{const raw=Uint8Array.from({length:1048676},(_,i)=>i%256);const chunks=new NativeChunks();let result:ArrayBuffer|null=null;const count=Math.ceil(raw.length/32768);for(let i=0;i<count;i++){const v={id:'generation-frame',index:i,count,data:toBase64(raw.subarray(i*32768,(i+1)*32768))};expect(JSON.stringify(v).length).toBeLessThan(65536);result=chunks.add(v,100)}expect(result?.byteLength).toBe(raw.byteLength);expect(Buffer.from(result!).equals(Buffer.from(raw))).toBe(true)});
  it('rejects reordered, oversized, expired and malformed IPC',()=>{const v={id:'1',index:0,count:2,data:toBase64(new Uint8Array([1]))};const c=new NativeChunks();c.add(v,100);expect(()=>c.add({...v,index:1},1200)).toThrow();expect(()=>new NativeChunks().add({...v,count:100000})).toThrow();expect(()=>new NativeChunks().add({...v,index:1})).toThrow();expect(()=>new NativeChunks().add({...v,data:'!'})).toThrow();expect(()=>new NativeChunks().add({...v,data:'a'.repeat(100000)})).toThrow()});
  it('handles all binary byte values',()=>{const b=Uint8Array.from({length:256},(_,i)=>i);expect(fromBase64(toBase64(b))).toEqual(b)})
 });
