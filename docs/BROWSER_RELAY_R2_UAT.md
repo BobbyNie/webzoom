@@ -1,6 +1,6 @@
-# 网页分流 r2 候选：逐人接收看板与扩展人数
+# 网页分流 r2：逐人接收看板与一带三
 
-日期：2026-10-16。分支：`feature/browser-peer-relay`。**源码候选，尚未发布镜像或更新公司 OCP。**
+日期：2026-10-16。分支：`feature/browser-peer-relay`。**已发布独立预发布镜像；尚未上传公司 JFrog 或更新公司 OCP。**
 
 ## 使用上有什么变化
 
@@ -46,8 +46,19 @@
 - Windows 运行排除了既有 `TestFileStoreInitialConfigurationAndRestart`（POSIX 文件权限差异）；未修改/删减该测试。Linux 全量 race/vet、安全扫描、镜像及部署测试必须在发布前通过，不能把 Windows 本机结果当完整发布证据。
 - 真实浏览器是同一电脑上的隔离会话，不是六台公司电脑；没有实际核验跨楼网络、32/64 台电脑容量或公司出口节流率。
 
-## 交付状态与后续发布
+## 交付状态与部署
 
-目前只有源码与本机验证，候选 UI 标识 `browser-relay-uat-20261016-r2` 不是已存在镜像地址。公司旧 r1 不会因本机改代码自动更新。
+2026-10-16 已发布独立 prerelease [browser-relay-uat-20261016-r2](https://github.com/BobbyNie/webzoom/releases/tag/browser-relay-uat-20261016-r2)，不是正式版/latest。
 
-后续获准发布时依照 `COMPANY_OCP_RELEASE_RUNBOOK.md` 与 `ANNOTATION_UAT.md`：固定最终提交、通过同一轮 Linux 质量/镜像 CI、核验归档/镜像身份、独立 prerelease（不改 r1/latest/main），再给本版可直接粘贴的 Linux 搬运与 Windows 只换镜像命令。保留现有 SSO、CA、PVC、管理配置及带宽持久化值。
+- 镜像源码/tag：`d221f4804a63d146170412104b7a0e4c5b8ad4e4`。
+- 同一轮 Linux CI：[38870150235](https://github.com/BobbyNie/webzoom/actions/runs/38870150235)；质量与镜像两组检查全部成功，包含未在 Windows 排除的完整 Go 权限/race 检查、浏览器、漏洞扫描和非 root 容器部署验证。
+- 镜像归档 SHA-256：`cef87e62ae4a33529160d8ee089af28f94896e15ce0f3bdd68880ac1aacc9d81`。
+- 镜像 config ID：`sha256:3dbb09bc9e9e7f8b0a76e398b1135a86cbc8ed64004e8d0895b450e4c6647ea9`，不是 registry manifest digest。
+- 已再次下载六份发布附件，与同次 CI 交付文件及发布 SHA-256 一致；tag 精确对应源码。main 和正式 latest `v0.1.6` 未改。
+- **GitHub 发布不是公司 JFrog 上传或 OCP 部署。** 公司旧 r1 不会自动更新；尚未在公司核验本版跨楼互传或真实链路节省。
+
+部署沿用 `COMPANY_OCP_RELEASE_RUNBOOK.md`：公司 Linux/Podman 先核验并搬运本版镜像，成功后公司 Windows/PowerShell 读取现场实际旧镜像、保存本版独立回退记录，仅 `oc set image`。不重新套用 YAML，不改现有 SSO、CA、PVC、管理员、网络、安全、环境及带宽持久化值。本轮无存储格式迁移。
+
+此升级面向已经启用 `BROWSER_RELAY_ENABLED=true` 的网页分流部署；该开关默认关闭，主持人仍需在共享前开启本场试验。已有配置若异常或人数上限不足以验证一带三，停止核对，不擅自重置。
+
+已离线验证 Linux 搬运的 7 个成功/失败情景及 Windows 部署/回退的 20 个成功、冲突、配置保留和失败情景；没有因此访问公司环境。准确内部地址与整段可粘贴命令只保存在工作区本地部署记录，不放入公开仓库或发布附件。
