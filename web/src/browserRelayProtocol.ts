@@ -38,3 +38,6 @@ export async function verifyEnvelope(buffer:ArrayBuffer,plan:BrowserPlan,key:Cry
  if(!await crypto.subtle.verify({name:'ECDSA',hash:'SHA-256'},key,buffer.slice(40,104),signed))throw Error('frame signature');
  return raw;
 }
+export interface BrowserReport {generation:number;centerBytes:number;peerBytes:number;sentBytes:number;verifiedFrames:number;rejected:number;planFrames:number;mediaAgeMs:number}
+export interface BrowserParticipant {user:{id:string;name:string};role:BrowserPlan['role'];reason:string;parent:string;children:number;report?:BrowserReport;reportedAt:number}
+export interface BrowserOverview {generation:number;active:boolean;generatedAt:number;maxViewers:number;maxFanout:number;participants:BrowserParticipant[];receivedAt?:number}

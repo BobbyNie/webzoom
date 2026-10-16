@@ -73,3 +73,22 @@ func TestBandwidthStartupLimit(t *testing.T) {
 		})
 	}
 }
+
+func TestBrowserRelayViewerLimit(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  int
+		bad   bool
+	}{
+		{"", 32, false}, {"1", 1, false}, {"32", 32, false}, {"64", 64, false},
+		{"0", 0, true}, {"-1", 0, true}, {"65", 0, true}, {"abc", 0, true}, {"1.5", 0, true}, {"999999999999999999999", 0, true},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			t.Setenv("BROWSER_RELAY_MAX_VIEWERS", tc.value)
+			got, err := browserRelayViewerLimit()
+			if (err != nil) != tc.bad || got != tc.want {
+				t.Fatal(got, err)
+			}
+		})
+	}
+}

@@ -12,7 +12,11 @@ import (
 
 func relayFixture(t *testing.T, limit int, viewers int) (*Hub, Snapshot, []*Peer) {
 	t.Helper()
-	h := New(Config{BrowserRelayEnabled: true, BandwidthLimitMbps: limit})
+	return relayFixtureConfig(t, Config{BrowserRelayEnabled: true, BandwidthLimitMbps: limit}, viewers)
+}
+func relayFixtureConfig(t *testing.T, c Config, viewers int) (*Hub, Snapshot, []*Peer) {
+	t.Helper()
+	h := New(c)
 	r, err := h.Create(owner)
 	if err != nil {
 		t.Fatal(err)
@@ -30,6 +34,9 @@ func relayFixture(t *testing.T, limit int, viewers int) (*Hub, Snapshot, []*Peer
 		people = append(people, p)
 		if e = h.BrowserControl(p, BrowserCommand{Kind: "hello", Capable: true}); e != nil {
 			t.Fatal(e)
+		}
+		for _, joined := range people {
+			relayPlan(joined)
 		}
 	}
 	if _, err = h.Action(r.ID, owner.ID, "browser-relay-on", ""); err != nil {
@@ -73,8 +80,12 @@ func TestBrowserRelayOptInAndCapacity(t *testing.T) {
 	if _, e := h.Action(r.ID, people[1].User.ID, "browser-relay-off", ""); e == nil {
 		t.Fatal("nonowner toggled")
 	}
-	if _, e := h.Join(r.ID, User{ID: "fifth"}, "extra"); e != ErrCapacity {
-		t.Fatalf("cap: %v", e)
+	if _, e := h.Join(r.ID, User{ID: "fifth"}, "extra"); e != nil {
+		t.Fatalf("fifth participant rejected: %v", e)
+	}
+	capped, cr, _ := relayFixtureConfig(t, Config{BrowserRelayEnabled: true, BandwidthLimitMbps: 200, BrowserRelayMaxViewers: 3}, 3)
+	if _, e := capped.Join(cr.ID, User{ID: "over-cap"}, "extra"); e != ErrCapacity {
+		t.Fatalf("configured cap: %v", e)
 	}
 	relayStart(t, h, r)
 	if _, e := h.Action(r.ID, owner.ID, "browser-relay-off", ""); e != ErrConflict {
@@ -82,10 +93,10 @@ func TestBrowserRelayOptInAndCapacity(t *testing.T) {
 	}
 }
 func TestBrowserRelaySignedFanoutAndFailover(t *testing.T) {
-	h, r, p := relayFixture(t, 200, 3)
+	h, r, p := relayFixture(t, 200, 4)
 	s := relayStart(t, h, r)
-	plans := []*BrowserPlan{relayPlan(p[0]), relayPlan(p[1]), relayPlan(p[2]), relayPlan(p[3])}
-	if plans[1].Role != "root" || len(plans[1].Links) != 2 || plans[2].Role != "peer" || plans[3].Role != "peer" {
+	plans := []*BrowserPlan{relayPlan(p[0]), relayPlan(p[1]), relayPlan(p[2]), relayPlan(p[3]), relayPlan(p[4])}
+	if plans[1].Role != "root" || len(plans[1].Links) != 3 || plans[2].Role != "peer" || plans[3].Role != "peer" || plans[4].Role != "peer" {
 		t.Fatalf("bad plans %+v", plans[1])
 	}
 	raw := frame(s.Epoch, 1, true)
@@ -93,7 +104,7 @@ func TestBrowserRelaySignedFanoutAndFailover(t *testing.T) {
 		t.Fatal(e)
 	}
 	wire, ok := p[1].Media.Pop()
-	if !ok || p[2].Media.Len() != 0 || p[3].Media.Len() != 0 {
+	if !ok || p[2].Media.Len() != 0 || p[3].Media.Len() != 0 || p[4].Media.Len() != 0 {
 		t.Fatal("not root-only fanout")
 	}
 	if string(wire[:4]) != "WZP1" || string(wire[8:40]) != r.ID || binary.BigEndian.Uint32(wire[4:8]) != plans[1].Generation || !bytes.Equal(raw, wire[104:]) {
@@ -119,7 +130,7 @@ func TestBrowserRelaySignedFanoutAndFailover(t *testing.T) {
 	if e := h.Publish(p[0], frame(s.Epoch, 2, true)); e != nil {
 		t.Fatal(e)
 	}
-	if p[2].Media.Len() != 1 || p[3].Media.Len() != 0 {
+	if p[2].Media.Len() != 1 || p[3].Media.Len() != 0 || p[4].Media.Len() != 0 {
 		t.Fatal("root not replaced")
 	}
 	if _, e := h.Action(r.ID, owner.ID, "stop", ""); e != nil {

@@ -43,3 +43,16 @@ describe('browser relay lifecycle',()=>{
   expect(send.mock.calls.filter(([message])=>message.browser.kind==='failed')).toHaveLength(1);relay.close();
  });
 });
+
+describe('receiver report lifecycle',()=>{
+ it('reports local counters with generation, never reports disabled or expired sessions, and clears timers',()=>{
+  vi.useFakeTimers();vi.setSystemTime(10000);const send=vi.fn();
+  const relay=new BrowserRelay({send,frame:vi.fn(),reset:vi.fn(),keyframe:vi.fn(),status:vi.fn(),now:()=>1000,expired:vi.fn()});
+  relay.apply({...plan,active:false,role:'off'});vi.advanceTimersByTime(2000);expect(send).not.toHaveBeenCalled();
+  relay.touch();relay.apply({...plan,generation:8});vi.advanceTimersByTime(2500);
+  const reports=()=>send.mock.calls.map(([m])=>m.browser).filter(m=>m.kind==='report');
+  expect(reports().length).toBeGreaterThan(0);expect(reports()[0].report).toMatchObject({generation:8,planFrames:0,peerBytes:0});
+  vi.advanceTimersByTime(10000);const count=reports().length;vi.advanceTimersByTime(4000);expect(reports()).toHaveLength(count);
+  relay.close();expect(vi.getTimerCount()).toBe(0);
+ });
+});

@@ -64,6 +64,14 @@ func bandwidthLimit() (int, error) {
 	return n, nil
 }
 
+func browserRelayViewerLimit() (int, error) {
+	n, err := strconv.Atoi(env("BROWSER_RELAY_MAX_VIEWERS", "32"))
+	if err != nil || n < 1 || n > 64 {
+		return 0, fmt.Errorf("BROWSER_RELAY_MAX_VIEWERS must be an integer between 1 and 64")
+	}
+	return n, nil
+}
+
 func loadBandwidthStore() (bandwidth.FileStore, int, error) {
 	store := bandwidth.FileStore{Path: env("BANDWIDTH_CONFIG_FILE", "/data/bandwidth.json")}
 	initial, err := bandwidthLimit()
@@ -108,6 +116,11 @@ func main() {
 	if maxRooms > 0 || maxViewers > 0 {
 		slog.Warn("load-test capacity limits enabled; do not use for normal deployment", "rooms", maxRooms, "viewers", maxViewers)
 	}
+	relayViewers, e := browserRelayViewerLimit()
+	if e != nil {
+		slog.Error(e.Error())
+		os.Exit(1)
+	}
 	store, limit, e := loadBandwidthStore()
 	if e != nil {
 		slog.Error("bandwidth configuration initialization failed; check persistent volume and permissions", "error", e)
@@ -120,7 +133,7 @@ func main() {
 		slog.Error("OIDC initialization failed; check issuer, TLS trust and client configuration", "error", e)
 		os.Exit(1)
 	}
-	hub := meeting.New(meeting.Config{BrowserRelayEnabled: env("BROWSER_RELAY_ENABLED", "false") == "true", MaxRooms: maxRooms, MaxViewers: maxViewers, BandwidthLimitMbps: limit, SaveBandwidthLimit: store.Save})
+	hub := meeting.New(meeting.Config{BrowserRelayMaxViewers: relayViewers, BrowserRelayEnabled: env("BROWSER_RELAY_ENABLED", "false") == "true", MaxRooms: maxRooms, MaxViewers: maxViewers, BandwidthLimitMbps: limit, SaveBandwidthLimit: store.Save})
 	handler := server.New(server.Config{Auth: manager, Hub: hub, StaticDir: env("STATIC_DIR", "web/dist"), MetricsToken: metricsToken, AdminUserIDs: os.Getenv("ADMIN_USER_IDS")})
 	srv := &http.Server{Addr: env("LISTEN_ADDR", ":8080"), Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	go func() {

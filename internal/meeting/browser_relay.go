@@ -1,6 +1,6 @@
 package meeting
 
-// Browser relay is an opt-in, four-person pilot, not a LAN discovery service.
+// Browser relay is opt-in with bounded fanout and central bandwidth admission.
 // Signalling is room/link scoped; no public ICE infrastructure is used.
 import (
 	"crypto/ecdsa"
@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
 	"net"
 	"sort"
 	"strings"
@@ -16,6 +17,9 @@ import (
 )
 
 const browserReservationMbps = 8
+const browserMaxFanout = 3
+const browserDefaultViewers = 32
+const browserHardMaxViewers = 64
 const browserEnvelopeHeader = 104
 
 type browserHub struct {
@@ -23,10 +27,17 @@ type browserHub struct {
 	tokens float64
 	last   time.Time
 }
-type browserPeer struct{ known, capable, failed, direct bool }
+type browserPeer struct {
+	known, capable, failed, direct bool
+	role, reason, parent, failure  string
+	report                         *BrowserReport
+	reportedAt, lastReport         time.Time
+}
 type browserRoom struct {
 	generation uint32
 	root       string
+	roots      map[string]bool
+	overviewAt time.Time
 	links      map[string]browserLink
 }
 type browserLink struct {
@@ -59,6 +70,8 @@ type BrowserCommand struct {
 	Capable    bool           `json:"capable"`
 	Generation uint32         `json:"generation"`
 	Signal     *BrowserSignal `json:"signal,omitempty"`
+	Report     *BrowserReport `json:"report,omitempty"`
+	Failure    string         `json:"failure,omitempty"`
 }
 
 func (h *Hub) initBrowserRelay() {
@@ -81,7 +94,7 @@ func browserStreams(r *room) int {
 	}
 	n := 1 // Reserve ingress as well as media egress.
 	for id, p := range r.peers {
-		if id != r.PublisherID && (!r.BrowserRelayEnabled || id == r.browser.root || p.browser.direct) {
+		if id != r.PublisherID && (!r.BrowserRelayEnabled || r.browser.roots[id] || p.browser.direct) {
 			n++
 		}
 	}
@@ -107,7 +120,7 @@ func (h *Hub) browserStartAllowed(r *room) bool {
 	return (h.browserReservedExcept(r)+n)*browserReservationMbps <= h.BandwidthStatus().LimitMbps
 }
 func (h *Hub) browserReceives(r *room, p *Peer) bool {
-	return !r.BrowserRelayEnabled || p.User.ID == r.browser.root || p.browser.direct
+	return !r.BrowserRelayEnabled || r.browser.roots[p.User.ID] || p.browser.direct
 }
 
 func (h *Hub) browserReplan(r *room) {
@@ -130,22 +143,54 @@ func (h *Hub) browserReplan(r *room) {
 	}
 	if r.BrowserRelayEnabled && r.Active {
 		sort.Strings(ids)
-		root := ""
+		reserved := h.browserReservedExcept(r) + 1
+		roots := make(map[string]bool)
+		counts := make(map[string]int)
+		orderedRoots := []string{}
+		addRoot := func(id string) bool {
+			if (reserved+1)*browserReservationMbps > h.BandwidthStatus().LimitMbps {
+				return false
+			}
+			roots[id] = true
+			orderedRoots = append(orderedRoots, id)
+			reserved++
+			plans[id].Role = "root"
+			plans[id].Reason = fmt.Sprintf("接收服务器画面并向同伴转发（每节点最多 %d 位）", browserMaxFanout)
+			return true
+		}
+		// Retain healthy roots first. Every root consumes its own budget reservation.
 		for _, id := range ids {
-			if id == r.browser.root {
-				root = id
+			if r.browser.roots[id] {
+				addRoot(id)
 			}
 		}
-		if root == "" && len(ids) > 0 {
-			root = ids[0]
+		for _, id := range ids {
+			if roots[id] {
+				continue
+			}
+			parent := ""
+			for _, root := range orderedRoots {
+				if counts[root] < browserMaxFanout {
+					parent = root
+					break
+				}
+			}
+			if parent == "" {
+				addRoot(id)
+				continue
+			}
+			counts[parent]++
+			link := token()
+			r.browser.links[link] = browserLink{root: parent, child: id}
+			plans[id].Role = "peer"
+			plans[id].Reason = "尝试同伴供流；实际办公网路径仍需核验"
+			plans[id].Links = append(plans[id].Links, BrowserLink{ID: link, Peer: parent})
+			plans[parent].Links = append(plans[parent].Links, BrowserLink{ID: link, Peer: id, Offerer: true})
 		}
-		reserved := h.browserReservedExcept(r) + 1
-		if root != "" && (reserved+1)*browserReservationMbps > h.BandwidthStatus().LimitMbps {
-			root = ""
-		}
-		r.browser.root = root
-		if root != "" {
-			reserved++
+		r.browser.roots = roots
+		r.browser.root = ""
+		if len(orderedRoots) > 0 {
+			r.browser.root = orderedRoots[0]
 		}
 		ordered := make([]string, 0, len(r.peers))
 		for id := range r.peers {
@@ -155,42 +200,48 @@ func (h *Hub) browserReplan(r *room) {
 		for _, id := range ordered {
 			p, plan := r.peers[id], plans[id]
 			plan.PublicKey = h.browserPublicKey()
-			plan.Role = "waiting"
-			plan.Reason = "等待可用的网页转发节点或中心供流额度"
 			if id == r.PublisherID {
 				plan.Role = "publisher"
-				plan.Reason = "中心供流试验"
+				plan.Reason = "共享画面上传服务器"
 				continue
 			}
-			if id == root {
-				plan.Role = "root"
-				plan.Reason = "接收中心画面并向获准同伴转发"
+			if plan.Role == "root" || plan.Role == "peer" {
 				continue
 			}
+			plan.Role = "waiting"
+			plan.Reason = "等待可用转发节点或服务器供流额度"
 			if p.browser.known && (!p.browser.capable || p.browser.failed) {
+				why := browserFailureText(p.browser.failure)
+				if !p.browser.capable {
+					why = "浏览器不支持或不允许同伴连接"
+				}
 				if (reserved+1)*browserReservationMbps <= h.BandwidthStatus().LimitMbps {
 					p.browser.direct = true
 					reserved++
 					plan.Role = "direct"
-					plan.Reason = "同伴连接不可用，已获准中心直连"
+					plan.Reason = why + "；已获准服务器直连"
 				} else {
-					plan.Reason = "同伴连接不可用；中心直连额度不足，已暂停，未绕过带宽限制"
+					plan.Reason = why + "；服务器额度不足，已暂停画面"
 				}
-			} else if root != "" && p.browser.capable {
-				link := token()
-				r.browser.links[link] = browserLink{root: root, child: id}
-				plan.Role = "peer"
-				plan.Reason = "尝试同伴媒体；实际办公网路径仍需现场核验"
-				plan.Links = append(plan.Links, BrowserLink{ID: link, Peer: root})
-				plans[root].Links = append(plans[root].Links, BrowserLink{ID: link, Peer: id, Offerer: true})
 			}
 		}
 	} else {
 		r.browser.root = ""
+		r.browser.roots = nil
 	}
 	for id, plan := range plans {
-		h.emit(r.peers[id], Event{Type: "browser-plan", BrowserPlan: plan})
+		p := r.peers[id]
+		p.browser.role = plan.Role
+		p.browser.reason = plan.Reason
+		p.browser.parent = ""
+		for _, link := range plan.Links {
+			if !link.Offerer {
+				p.browser.parent = link.Peer
+			}
+		}
+		h.emit(p, Event{Type: "browser-plan", BrowserPlan: plan})
 	}
+	h.browserOverview(r, true)
 	h.keyframe(r)
 }
 
@@ -215,11 +266,14 @@ func (h *Hub) BrowserControl(p *Peer, c BrowserCommand) error {
 		if !r.BrowserRelayEnabled || c.Generation != r.browser.generation || !r.Active {
 			return nil
 		}
-		if p.User.ID == r.PublisherID || p.User.ID == r.browser.root || p.browser.failed {
+		if p.User.ID == r.PublisherID || r.browser.roots[p.User.ID] || p.browser.failed {
 			return nil
 		}
 		p.browser.failed = true
+		p.browser.failure = browserFailureCode(c.Failure)
 		h.browserReplan(r)
+	case "report":
+		return h.browserReport(r, p, c)
 	case "signal":
 		s := c.Signal
 		if s == nil || len(s.SDP) > 12<<10 {
