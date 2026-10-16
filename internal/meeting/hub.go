@@ -24,28 +24,33 @@ type User struct {
 	Name string `json:"name"`
 }
 type Snapshot struct {
-	Annotators         []string  `json:"annotators"`
-	AnnotationRequests []string  `json:"annotationRequests"`
-	Quality            int       `json:"quality"`
-	ID                 string    `json:"id"`
-	OwnerID            string    `json:"ownerId"`
-	PublisherID        string    `json:"publisherId"`
-	Epoch              uint32    `json:"epoch"`
-	Active             bool      `json:"active"`
-	CreatedAt          time.Time `json:"createdAt"`
-	ExpiresAt          time.Time `json:"expiresAt"`
-	Participants       []User    `json:"participants"`
+	BrowserRelayAvailable bool      `json:"browserRelayAvailable"`
+	BrowserRelayEnabled   bool      `json:"browserRelayEnabled"`
+	Annotators            []string  `json:"annotators"`
+	AnnotationRequests    []string  `json:"annotationRequests"`
+	Quality               int       `json:"quality"`
+	ID                    string    `json:"id"`
+	OwnerID               string    `json:"ownerId"`
+	PublisherID           string    `json:"publisherId"`
+	Epoch                 uint32    `json:"epoch"`
+	Active                bool      `json:"active"`
+	CreatedAt             time.Time `json:"createdAt"`
+	ExpiresAt             time.Time `json:"expiresAt"`
+	Participants          []User    `json:"participants"`
 }
 type Event struct {
-	Annotation  *AnnotationEvent `json:"annotation,omitempty"`
-	Annotations *AnnotationState `json:"annotations,omitempty"`
-	Error       string           `json:"error,omitempty"`
-	Type        string           `json:"type"`
-	Room        *Snapshot        `json:"room,omitempty"`
-	Level       int              `json:"level,omitempty"`
-	ServerTime  int64            `json:"serverTime,omitempty"`
+	BrowserPlan   *BrowserPlan     `json:"browserPlan,omitempty"`
+	BrowserSignal *BrowserSignal   `json:"browserSignal,omitempty"`
+	Annotation    *AnnotationEvent `json:"annotation,omitempty"`
+	Annotations   *AnnotationState `json:"annotations,omitempty"`
+	Error         string           `json:"error,omitempty"`
+	Type          string           `json:"type"`
+	Room          *Snapshot        `json:"room,omitempty"`
+	Level         int              `json:"level,omitempty"`
+	ServerTime    int64            `json:"serverTime,omitempty"`
 }
 type Peer struct {
+	browser                 browserPeer
 	traffic                 *traffic
 	annotationRequestWindow time.Time
 	annotationRequestCount  int
@@ -57,6 +62,7 @@ type Peer struct {
 	Reason                  string
 }
 type room struct {
+	browser            browserRoom
 	annotations        annotationRoom
 	annotators         map[string]bool
 	annotationRequests map[string]bool
@@ -69,6 +75,7 @@ type room struct {
 	windowBytes                                int
 }
 type Config struct {
+	BrowserRelayEnabled  bool
 	BandwidthLimitMbps   int
 	SaveBandwidthLimit   func(int) error
 	Now                  func() time.Time
@@ -76,6 +83,7 @@ type Config struct {
 }
 type Metrics struct{ Ingress, Egress, Dropped, Degraded atomic.Uint64 }
 type Hub struct {
+	browser    browserHub
 	bandwidth  *bandwidth.Limiter
 	instanceID string
 	startedAt  time.Time
@@ -89,7 +97,9 @@ func New(c Config) *Hub {
 	if c.Now == nil {
 		c.Now = time.Now
 	}
-	return &Hub{bandwidth: bandwidth.New(c.BandwidthLimitMbps, c.SaveBandwidthLimit), instanceID: token(), startedAt: c.Now(), rooms: make(map[string]*room), cfg: c}
+	h := &Hub{bandwidth: bandwidth.New(c.BandwidthLimitMbps, c.SaveBandwidthLimit), instanceID: token(), startedAt: c.Now(), rooms: make(map[string]*room), cfg: c}
+	h.initBrowserRelay()
+	return h
 }
 func token() string {
 	b := make([]byte, 24)
@@ -110,6 +120,7 @@ func (h *Hub) Create(u User) (Snapshot, error) {
 	}
 	now := h.cfg.Now()
 	r := &room{Snapshot: Snapshot{ID: token(), OwnerID: u.ID, PublisherID: u.ID, CreatedAt: now, ExpiresAt: now.Add(8 * time.Hour)}, peers: map[string]*Peer{}, emptyAt: now}
+	r.BrowserRelayAvailable = h.cfg.BrowserRelayEnabled
 	h.rooms[r.ID] = r
 	return snapshot(r), nil
 }
@@ -188,10 +199,17 @@ func (h *Hub) Join(id string, u User, session string) (*Peer, error) {
 	if h.cfg.MaxViewers > 0 && len(r.peers) >= h.cfg.MaxViewers+1 {
 		return nil, ErrCapacity
 	}
+	if r.BrowserRelayEnabled && len(r.peers) >= 4 {
+		return nil, ErrCapacity
+	}
+	if h.cfg.BrowserRelayEnabled && r.Active && !r.BrowserRelayEnabled && !h.browserBudget(1) {
+		return nil, ErrBandwidth
+	}
 	p := &Peer{traffic: &r.traffic, User: u, SessionID: session, RoomID: id, Events: make(chan Event, 32), Media: media.NewQueue(8, 2<<20), Done: make(chan struct{})}
 	r.peers[u.ID] = p
 	r.emptyAt = time.Time{}
 	h.broadcast(r)
+	h.browserReplan(r)
 	h.keyframe(r)
 	h.emit(p, Event{Type: "annotations", Annotations: annotationSnapshot(r)})
 	return p, nil
@@ -224,6 +242,7 @@ func (h *Hub) reset(r *room) {
 	r.lastKey = time.Time{}
 	for _, p := range r.peers {
 		p.Media.Reset()
+		p.browser.failed = false
 	}
 }
 func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
@@ -245,6 +264,17 @@ func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
 		return Snapshot{}, ErrForbidden
 	}
 	switch action {
+	case "browser-relay-on", "browser-relay-off":
+		if !h.cfg.BrowserRelayEnabled || actor != r.OwnerID {
+			return Snapshot{}, ErrForbidden
+		}
+		if r.Active || target != "" {
+			return Snapshot{}, ErrConflict
+		}
+		if action == "browser-relay-on" && len(r.peers) > 4 {
+			return Snapshot{}, ErrCapacity
+		}
+		r.BrowserRelayEnabled = action == "browser-relay-on"
 	case "annotation-request", "annotation-cancel":
 		// An authenticated participant may only change their own request.
 		if actor == r.OwnerID || target != "" {
@@ -333,6 +363,9 @@ func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
 		if r.Active {
 			return Snapshot{}, ErrConflict
 		}
+		if h.cfg.BrowserRelayEnabled && !h.browserStartAllowed(r) {
+			return Snapshot{}, ErrBandwidth
+		}
 		h.reset(r)
 		r.Active = true
 	case "stop":
@@ -344,6 +377,9 @@ func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
 		return Snapshot{}, ErrConflict
 	}
 	h.broadcast(r)
+	if action == "browser-relay-on" || action == "browser-relay-off" || action == "start" || action == "stop" || action == "transfer" {
+		h.browserReplan(r)
+	}
 	if action == "start" || action == "stop" || action == "transfer" {
 		h.broadcastAnnotations(r)
 	}
@@ -385,6 +421,7 @@ func (h *Hub) leave(p *Peer, reason string) {
 		r.emptyAt = h.cfg.Now()
 	}
 	h.broadcast(r)
+	h.browserReplan(r)
 	if r.PublisherID == p.User.ID {
 		h.broadcastAnnotations(r)
 	}
@@ -475,12 +512,34 @@ func (h *Hub) Publish(p *Peer, data []byte) error {
 	h.bandwidth.Record(now, uint64(len(data)))
 	h.Metrics.Ingress.Add(uint64(len(data)))
 	r.traffic.ingress.Add(uint64(len(data)))
+	wire := data
+	if r.BrowserRelayEnabled {
+		wire, e = h.browserSign(r, data)
+		if e != nil {
+			return e
+		}
+	}
+	recipients := 0
+	for _, v := range r.peers {
+		if v != p && h.browserReceives(r, v) {
+			recipients++
+		}
+	}
+	if !h.browserSpend(now, len(data)+len(wire)*recipients) {
+		for _, v := range r.peers {
+			v.Media.Reset()
+		}
+		h.Metrics.Dropped.Add(1)
+		h.keyframe(r)
+		h.emit(p, Event{Type: "congestion", Level: 1})
+		return nil
+	}
 	needKey := false
 	for _, v := range r.peers {
-		if v == p {
+		if v == p || !h.browserReceives(r, v) {
 			continue
 		}
-		if !v.Media.Push(data, f.Key) {
+		if !v.Media.Push(wire, f.Key) {
 			h.Metrics.Dropped.Add(1)
 			needKey = true
 		}

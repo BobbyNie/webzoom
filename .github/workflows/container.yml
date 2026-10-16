@@ -58,6 +58,9 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:e2e
+      - name: Browser-only relay pilot tests
+        working-directory: web
+        run: npm run test:relay
 
   image:
     name: Build and test non-root image

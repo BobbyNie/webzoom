@@ -214,7 +214,7 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 				}
 				continue
 			}
-			if len(data) > 4096 {
+			if len(data) > 16<<10 {
 				return
 			}
 			if time.Since(window) >= time.Second {
@@ -226,6 +226,7 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 				return
 			}
 			var msg struct {
+				Browser    *meeting.BrowserCommand    `json:"browser"`
 				Annotation *meeting.AnnotationCommand `json:"annotation"`
 				Type       string                     `json:"type"`
 				Level      int                        `json:"level"`
@@ -234,7 +235,14 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 			if json.Unmarshal(data, &msg) != nil {
 				return
 			}
+			if msg.Type != "browser" && len(data) > 4096 {
+				return
+			}
 			switch msg.Type {
+			case "browser":
+				if msg.Browser == nil || a.Hub.BrowserControl(p, *msg.Browser) != nil {
+					return
+				}
 			case "annotation":
 				if msg.Annotation == nil {
 					return
