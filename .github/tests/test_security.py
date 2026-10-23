@@ -95,6 +95,7 @@ class SecurityTests(unittest.TestCase):
         proxy = ROOT / 'Dockerfile.proxy'
         self.assertTrue(proxy.exists(), 'build a patched proxy instead of using the vulnerable upstream image')
         text = proxy.read_text()
+        self.assertIn('apk upgrade --no-cache && apk add --no-cache', text)
         self.assertIn("'zlib>=1.3.2-r1'", text)
         for package in ('musl>=1.2.6-r3', 'musl-utils>=1.2.6-r3', 'libexpat>=2.9.0-r0', 'libx11>=1.8.14-r0', 'libxpm>=3.5.20-r0', 'nginx>=1.30.6-r0'):
             self.assertIn("'" + package + "'", text)
