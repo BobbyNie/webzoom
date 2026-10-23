@@ -86,7 +86,7 @@ class SecurityTests(unittest.TestCase):
     def test_build_and_proxy_packages_use_fixed_versions(self):
         dockerfile = (ROOT / 'Dockerfile').read_text()
         self.assertRegex(dockerfile, r'FROM node:22-alpine@sha256:[0-9a-f]{64} AS frontend')
-        self.assertRegex(dockerfile, r'FROM golang:1\.26\.9-alpine@sha256:[0-9a-f]{64} AS backend')
+        self.assertRegex(dockerfile, r'FROM golang:1\.26\.10-alpine@sha256:[0-9a-f]{64} AS backend')
         self.assertEqual(dockerfile.count("'zlib>=1.3.2-r1'"), 2)
         self.assertIn('npm@12.2.0', dockerfile)
         self.assertIn('USER 65532:65532', dockerfile)

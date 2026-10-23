@@ -5,6 +5,7 @@ import "sort"
 // Receiver reports are authenticated self-reports, not independently measured
 // delivery acknowledgements or physical company-link bandwidth measurements.
 type BrowserReport struct {
+	Visibility     string `json:"visibility,omitempty"`
 	Generation     uint32 `json:"generation"`
 	CenterBytes    uint64 `json:"centerBytes"`
 	PeerBytes      uint64 `json:"peerBytes"`
@@ -14,7 +15,14 @@ type BrowserReport struct {
 	PlanFrames     uint64 `json:"planFrames"`
 	MediaAgeMs     uint64 `json:"mediaAgeMs"`
 }
+type BrowserRates struct {
+	CenterBps float64 `json:"centerBps"`
+	PeerBps   float64 `json:"peerBps"`
+	SentBps   float64 `json:"sentBps"`
+	SampleMs  int64   `json:"sampleMs"`
+}
 type BrowserParticipant struct {
+	Rates      *BrowserRates  `json:"rates,omitempty"`
 	User       User           `json:"user"`
 	Role       string         `json:"role"`
 	Reason     string         `json:"reason"`
@@ -72,6 +80,9 @@ func (h *Hub) browserReport(r *room, p *Peer, c BrowserCommand) error {
 	if !p.browser.known || v == nil || v.Generation != c.Generation {
 		return ErrConflict
 	}
+	if v.Visibility != "" && v.Visibility != "unknown" && v.Visibility != "visible" && v.Visibility != "hidden" {
+		return ErrConflict
+	}
 	const max = uint64(1<<53 - 1)
 	if v.CenterBytes > max || v.PeerBytes > max || v.SentBytes > max || v.VerifiedFrames > max || v.Rejected > max || v.PlanFrames > v.VerifiedFrames || v.MediaAgeMs > max {
 		return ErrConflict
@@ -83,6 +94,13 @@ func (h *Hub) browserReport(r *room, p *Peer, c BrowserCommand) error {
 	now := h.cfg.Now()
 	if !p.browser.lastReport.IsZero() && now.Sub(p.browser.lastReport).Milliseconds() < 1000 {
 		return nil
+	}
+	// Rates are deltas of authenticated self-reports, not physical WAN measurements.
+	p.browser.rates = nil
+	elapsed := now.Sub(p.browser.reportedAt).Milliseconds()
+	if old != nil && old.Generation == v.Generation && elapsed >= 1000 && elapsed <= 8000 {
+		factor := 8000 / float64(elapsed)
+		p.browser.rates = &BrowserRates{CenterBps: float64(v.CenterBytes-old.CenterBytes) * factor, PeerBps: float64(v.PeerBytes-old.PeerBytes) * factor, SentBps: float64(v.SentBytes-old.SentBytes) * factor, SampleMs: elapsed}
 	}
 	copy := *v
 	p.browser.report = &copy
@@ -119,6 +137,10 @@ func (h *Hub) browserOverview(r *room, force bool) {
 		if p.browser.report != nil && p.browser.report.Generation == r.browser.generation {
 			report := *p.browser.report
 			row.Report = &report
+			if p.browser.rates != nil {
+				rates := *p.browser.rates
+				row.Rates = &rates
+			}
 			row.ReportedAt = p.browser.reportedAt.UnixMilli()
 		}
 		v.Participants = append(v.Participants, row)

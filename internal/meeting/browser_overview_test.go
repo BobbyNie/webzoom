@@ -19,7 +19,7 @@ func takeOverview(p *Peer) *BrowserOverview {
 	}
 }
 func TestBrowserRelayMultipleRootsAndCapacity(t *testing.T) {
-	h, r, people := relayFixture(t, 200, 32)
+	h, r, people := relayFixtureConfig(t, Config{BrowserRelayEnabled: true, BandwidthLimitMbps: 200, BrowserRelayMaxViewers: 32}, 32)
 	if r.BrowserRelayMaxViewers != 32 {
 		t.Fatal("wrong advertised limit")
 	}
@@ -181,7 +181,7 @@ func TestBrowserFailureReasonsAreBoundedAndNotNetworkAccusations(t *testing.T) {
 }
 
 func TestBrowserRelayConfigBoundsAnd64ViewerTopology(t *testing.T) {
-	for _, tc := range []struct{ configured, want int }{{0, 32}, {1, 1}, {64, 64}, {100, 64}} {
+	for _, tc := range []struct{ configured, want int }{{0, 64}, {1, 1}, {64, 64}, {100, 64}} {
 		h := New(Config{BrowserRelayMaxViewers: tc.configured})
 		if h.cfg.BrowserRelayMaxViewers != tc.want {
 			t.Fatalf("configured %d: got %d", tc.configured, h.cfg.BrowserRelayMaxViewers)

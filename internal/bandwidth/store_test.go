@@ -3,6 +3,7 @@ package bandwidth
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -28,8 +29,18 @@ func TestFileStoreInitialConfigurationAndRestart(t *testing.T) {
 	if err != nil || n != 300 {
 		t.Fatal(n, err)
 	}
-	info, _ := os.Stat(path)
-	if info.Mode().Perm() != 0660 {
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Windows Chmod supports only the owner-writable bit, not Unix group/other
+	// permissions. Keep the exact 0660 assertion on Linux/Unix; do not skip the
+	// persistence, replacement, corruption or cleanup checks on Windows.
+	if runtime.GOOS == "windows" {
+		if info.Mode().Perm()&0200 == 0 {
+			t.Fatal("saved configuration is unexpectedly read-only", info.Mode())
+		}
+	} else if info.Mode().Perm() != 0660 {
 		t.Fatal("unexpected file permissions", info.Mode())
 	}
 	files, _ := os.ReadDir(filepath.Dir(path))

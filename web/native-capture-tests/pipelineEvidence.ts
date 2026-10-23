@@ -1,0 +1,26 @@
+import {type Page} from '@playwright/test';
+export interface CaptureChange {at:number;constraints:MediaTrackConstraints|undefined;completedAt?:number;settings?:MediaTrackSettings;error?:string}
+export interface PipelineCounters {captureChanges:CaptureChange[];captured:number;queued:number;sent:number;sourceWidth:number;sourceHeight:number;lastCapturedAt:number;lastQueuedAt:number;lastSentAt:number;maximumCaptureGapMs:number;maximumSendGapMs:number;maximumEncodeQueue:number;lastSocketBufferedBytes:number;sentBytes:number;arrivals:{now:number;timestamp:number}[]}
+declare global {interface Window {nativePipeline?:PipelineCounters;nativeSourceTicks?:number}}
+// Forward the original native reads/encode/send calls unchanged. No extra track
+// consumer, replacement media, encoder, socket, timestamp, or device is created.
+export async function measurePipeline(page:Page){await page.addInitScript(()=>{
+ const counters:PipelineCounters=window.nativePipeline={captureChanges:[],captured:0,queued:0,sent:0,sourceWidth:0,sourceHeight:0,lastCapturedAt:0,lastQueuedAt:0,lastSentAt:0,maximumCaptureGapMs:0,maximumSendGapMs:0,maximumEncodeQueue:0,lastSocketBufferedBytes:0,sentBytes:0,arrivals:[]};
+ const applyConstraints=MediaStreamTrack.prototype.applyConstraints;
+ MediaStreamTrack.prototype.applyConstraints=function(...args:Parameters<MediaStreamTrack['applyConstraints']>){
+  const change:CaptureChange={at:performance.now(),constraints:args[0]};
+  if(counters.captureChanges.length<100)counters.captureChanges.push(change);
+  return applyConstraints.apply(this,args).then(()=>{change.completedAt=performance.now();change.settings=this.getSettings();},error=>{change.completedAt=performance.now();change.error=String(error);throw error});
+ };
+ const read=ReadableStreamDefaultReader.prototype.read;
+ ReadableStreamDefaultReader.prototype.read=function(...args:[]){return read.apply(this,args).then(result=>{
+  if(result.value instanceof VideoFrame){const now=performance.now();if(counters.lastCapturedAt)counters.maximumCaptureGapMs=Math.max(counters.maximumCaptureGapMs,now-counters.lastCapturedAt);counters.lastCapturedAt=now;counters.captured++;counters.sourceWidth=result.value.displayWidth;counters.sourceHeight=result.value.displayHeight;if(counters.arrivals.length<180)counters.arrivals.push({now:performance.now(),timestamp:result.value.timestamp})}return result;
+ })};
+ const encode=VideoEncoder.prototype.encode;
+ VideoEncoder.prototype.encode=function(...args:Parameters<VideoEncoder['encode']>){counters.queued++;counters.lastQueuedAt=performance.now();counters.maximumEncodeQueue=Math.max(counters.maximumEncodeQueue,this.encodeQueueSize);return encode.apply(this,args)};
+ const send=WebSocket.prototype.send;
+ WebSocket.prototype.send=function(...args:Parameters<WebSocket['send']>){const data=args[0];if(data instanceof ArrayBuffer||ArrayBuffer.isView(data)){const now=performance.now();if(counters.lastSentAt)counters.maximumSendGapMs=Math.max(counters.maximumSendGapMs,now-counters.lastSentAt);counters.lastSentAt=now;counters.sent++;counters.sentBytes+=data.byteLength;counters.lastSocketBufferedBytes=this.bufferedAmount;}return send.apply(this,args)};
+})}
+export function nativeDocument(title:string){return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>${title}</title><style>body{margin:0;color:white;background:rgb(210,40,50);font:24px sans-serif;overflow:hidden}header{position:fixed;top:0;padding:24px;background:#000a;z-index:2}h1{font-size:28px;margin:0}footer{position:fixed;bottom:0;background:#000a;padding:24px;width:100%;box-sizing:border-box;z-index:2}.motion{position:fixed;top:25%;height:90px;width:180px;background:repeating-linear-gradient(45deg,#ffe000 0 12px,#002530 12px 24px);opacity:.85;will-change:transform}.second{top:70%;background:repeating-linear-gradient(-45deg,#eee 0 12px,#673ab7 12px 24px)}</style><header><h1>WebZoom · 原生动态画面实测</h1><p id="stage">red · low</p></header><div class="motion"></div><div class="motion second"></div><footer><p>专用本地测试标签页 · 不采集其他窗口 · 无公司数据</p><div id="clock"></div></footer><script>window.nativeSourceTicks=0;window.motionMode='low';const clock=document.querySelector('#clock'),items=document.querySelectorAll('.motion');function animate(now){if(window.motionMode==='high'){window.nativeSourceTicks++;clock.textContent=new Date().toISOString()+' · RAF '+window.nativeSourceTicks;items.forEach((el,i)=>el.style.transform='translateX('+((now*(i?-.26:.35))%(innerWidth+180))+'px)')}requestAnimationFrame(animate)}requestAnimationFrame(animate);setInterval(()=>{if(window.motionMode==='low'){window.nativeSourceTicks++;clock.textContent=new Date().toISOString()}},100);</script></html>`}
+export async function pipeline(page:Page){return page.evaluate(()=>window.nativePipeline!)}
+export async function motion(source:Page,mode:'low'|'high'){await source.evaluate(mode=>{(window as unknown as {motionMode:string}).motionMode=mode;document.querySelector('#stage')!.textContent=mode==='high'?'高动态模式':'低动态模式'},mode)}

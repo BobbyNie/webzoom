@@ -1,9 +1,11 @@
 # WebZoom
 
-WebZoom 是内网屏幕共享服务。浏览器只连接 HTTPS 和 WSS。
-服务不使用 WebRTC、TURN、STUN、UDP 或独立的客户端 TCP 协议。
+WebZoom 是内网屏幕共享服务。默认的服务器转发模式使用 HTTPS 和 WSS。
+本分支另有可选的纯网页协作分流：共享者经 WSS 上传，服务器向网页转发节点供流，节点通过 WebRTC DataChannel 向其他观众转发压缩画面。无需安装插件或 EXE，不使用原生 UDP 组播；当前未配置 STUN/TURN，也不保证跨公司网络可直连。
 
-**当前状态：首版核心功能和本机自动化验证已完成。生产容量验收尚未完成。**
+网页分流的本地可靠性改动、验证结果及未验证边界见 [本地续作记录](docs/BROWSER_RELAY_RESILIENCE_UAT.md)；16/32/64 会话采样和持续共享测试见 [容量采样记录](docs/BROWSER_RELAY_CAPACITY_UAT.md)。本机多会话测试不等于真实多设备容量认证，本地改动也不代表已经发布或更新公司环境。
+
+**当前状态：已修正画布首次初始化及旧编码器迟到错误的生命周期缺陷；2026-10-22 最终代码通过六观众原生采集 30 分钟、12 次重新共享和相关回归，六观众平均约 27.06 fps、最低质量窗口 24.64 fps（原门槛 15 fps）。本机持续约 1 fps 本轮未再复现，但此前偶发重采集失败和突然停止的根因仍未确定，不能称所有间歇故障已排除或正式生产就绪。** 最新修改、完整通过结果及保留失败见 [画布与生命周期修正记录](docs/BROWSER_RELAY_CANVAS_CONTEXT_UAT.md)；此前第 23 分钟失败见 [采集恢复修正记录](docs/BROWSER_RELAY_CAPTURE_RECOVERY_FIX_UAT.md)，较早第 18 分钟失败见 [历史长测记录](docs/BROWSER_RELAY_FINAL_ENDURANCE_UAT.md)。跨楼/外包网络、64/100 真实设备容量及公司环境均未在本轮验收，也没有部署或发布。
 不要把本机测试结果视为“1000 名听众持续 30 分钟”的承诺。
 完整结果和剩余验收项见 `docs/VERIFICATION.md`。
 安全扫描结果、修复范围和测试 Keycloak 剩余风险见 [安全报告](docs/SECURITY.md)。
@@ -153,7 +155,7 @@ Docker Hub 与 GitHub 的账号关联不能代替这两个发布凭据。
 
 ## 开发与验证
 
-必要条件：Go 1.26.9、Node.js 22、npm，以及桌面 Chromium 测试环境。
+必要条件：Go 1.26.10、Node.js 22、npm，以及桌面 Chromium 测试环境。
 依赖安装需要网络或组织内部的软件镜像源。
 
 ```sh
@@ -167,7 +169,10 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-浏览器测试使用真实 VP8 编解码，但用动画 Canvas 替代操作系统屏幕选择器。
+默认浏览器测试使用真实 VP8 编解码，但用动画 Canvas 替代操作系统屏幕选择器。
+另有可选的原生标签页采集实测（`npm run test:relay:native`），使用独立的本机 Chrome / Edge 进程和真实 `getDisplayMedia`，不替换为合成流；范围、结果和限制见 [原生采集实测](docs/BROWSER_RELAY_NATIVE_CAPTURE_UAT.md)。
+追加的性能瓶颈修正、六观众持续共享及故障恢复记录见 [原生性能实测](docs/BROWSER_RELAY_NATIVE_PERFORMANCE_UAT.md)。
+后端全量检查、安全审计、延长实测与尚未满足的发布闸门见 [本地就绪检查](docs/BROWSER_RELAY_LOCAL_READINESS_UAT.md)。
 测试 OIDC 服务仅通过 `testtools` 构建标签启用。它不会进入生产镜像。
 不要直接运行 Vite HTTP 开发服务来验收屏幕采集。
 

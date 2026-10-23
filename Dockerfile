@@ -10,7 +10,7 @@ RUN npm ci
 COPY web/ ./
 RUN npm test && npm run build
 
-FROM golang:1.26.9-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS backend
+FROM golang:1.26.10-alpine@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS backend
 RUN apk add --no-cache 'zlib>=1.3.2-r1'
 ENV CGO_ENABLED=0
 WORKDIR /src

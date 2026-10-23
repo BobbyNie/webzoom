@@ -65,7 +65,7 @@ func bandwidthLimit() (int, error) {
 }
 
 func browserRelayViewerLimit() (int, error) {
-	n, err := strconv.Atoi(env("BROWSER_RELAY_MAX_VIEWERS", "32"))
+	n, err := strconv.Atoi(env("BROWSER_RELAY_MAX_VIEWERS", "64"))
 	if err != nil || n < 1 || n > 64 {
 		return 0, fmt.Errorf("BROWSER_RELAY_MAX_VIEWERS must be an integer between 1 and 64")
 	}

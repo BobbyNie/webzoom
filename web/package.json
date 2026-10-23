@@ -9,7 +9,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:relay": "playwright test --config=playwright.relay.config.ts"
+    "test:relay": "playwright test --config=playwright.relay.config.ts",
+    "test:relay:capacity": "playwright test --config=playwright.capacity.config.ts capacity.spec.ts",
+    "test:relay:soak": "playwright test --config=playwright.soak.config.ts",
+    "test:relay:native": "playwright test --config=playwright.native-capture.config.ts",
+    "test:relay:native:pipeline": "playwright test --config=playwright.native-pipeline.config.ts",
+    "test:relay:native:stress": "playwright test --config=playwright.native-stress.config.ts"
   },
   "dependencies": {
     "react": "19.3.0",

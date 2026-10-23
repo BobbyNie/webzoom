@@ -4,6 +4,16 @@ async function capture(page:Page){await page.addInitScript(()=>{
  navigator.mediaDevices.getDisplayMedia=async()=>{const c=document.createElement('canvas');c.width=1280;c.height=720;const x=c.getContext('2d')!;let n=0;const draw=()=>{x.fillStyle=n++%60<30?'#008070':'#164866';x.fillRect(0,0,c.width,c.height);x.fillStyle='white';x.font='64px sans-serif';x.fillText('Peer relay '+n,80,180);requestAnimationFrame(draw)};draw();return c.captureStream(30)};
  navigator.mediaDevices.getUserMedia=async()=>{throw Error('camera/audio forbidden')};
 })}
+// Observe native connections without replacing their transport behavior.
+async function observeConnections(page:Page){await page.addInitScript(()=>{
+ const Native=window.RTCPeerConnection;
+ const observed=(window as Window&{relayTestConnections?:RTCPeerConnection[]});
+ observed.relayTestConnections=[];
+ window.RTCPeerConnection=class extends Native {
+  constructor(configuration?:RTCConfiguration){super(configuration);observed.relayTestConnections!.push(this)}
+ };
+})}
+async function connectionCount(page:Page){return page.evaluate(()=>((window as Window&{relayTestConnections?:RTCPeerConnection[]}).relayTestConnections??[]).length)}
 const bytes=async(p:Page,kind:string)=>Number(await p.getByTestId('relay-panel').getAttribute(`data-${kind}-bytes`));
 async function frames(p:Page){await expect.poll(async()=>Number(await p.getByTestId('frames').textContent()),{timeout:25000}).toBeGreaterThan(5)}
 async function role(p:Page,r:string){await expect(p.getByTestId('relay-panel')).toHaveAttribute('data-role',r,{timeout:20000})}
@@ -62,19 +72,20 @@ for(const limit of [20,200])test(`blocked peer path: budget ${limit} gives ${lim
  }
 });
 
-test('more than three viewers: late joins create additional bounded roots and owner sees every receiver',async({browser},info)=>{
+test('late joins retain healthy channels, bounded roots and real channel failure switches source',async({browser},info)=>{
  test.setTimeout(180000);
  const contexts:BrowserContext[]=[],pages:Page[]=[],errors:string[]=[],binary=[0,0,0,0,0,0];
  try{
   for(let i=0;i<6;i++){
    const c=await browser.newContext({ignoreHTTPSErrors:true});contexts.push(c);const p=await c.newPage();pages.push(p);
-   p.on('pageerror',e=>errors.push(e.message));p.on('websocket',ws=>ws.on('framereceived',e=>{if(Buffer.isBuffer(e.payload))binary[i]+=e.payload.length}));await capture(p);
+   p.on('pageerror',e=>errors.push(e.message));p.on('websocket',ws=>ws.on('framereceived',e=>{if(Buffer.isBuffer(e.payload))binary[i]+=e.payload.length}));await capture(p);await observeConnections(p);
   }
   const [owner]=pages;await login(owner,'AliceExpanded');await owner.getByRole('button',{name:'创建会议',exact:true}).click();await expect(owner).toHaveURL(/\/m\//);const url=owner.url();
   await owner.getByRole('button',{name:'开启网页分流试验'}).click();
   const names=['BobExpanded','CarolExpanded','DanaExpanded','EveExpanded','FayeExpanded'];
   for(let i=1;i<=3;i++){await login(pages[i],names[i-1]);await pages[i].goto(url);await expect(pages[i].getByTestId('relay-panel')).toBeVisible()}
   await owner.getByRole('button',{name:'共享屏幕',exact:true}).click();await frames(pages[2]);
+  expect(await connectionCount(pages[2])).toBe(1);expect(await connectionCount(pages[3])).toBe(1);
   // Fifth and sixth participants join an already streaming room.
   for(let i=4;i<6;i++){
    await login(pages[i],names[i-1]);await pages[i].goto(url);await expect(pages[i].getByTestId('relay-panel')).toBeVisible();
@@ -95,6 +106,21 @@ test('more than three viewers: late joins create additional bounded roots and ow
   }
   await expect(owner.locator('[data-testid="relay-member"][data-member-id="BobExpanded"]')).toContainText('已安排向 3 人转发');
   await expect(owner.locator('[data-testid="relay-member"][data-member-id="FayeExpanded"]')).toContainText('已安排向 0 人转发');
+  // Neither unrelated late join may recreate either established viewer connection.
+  expect(await connectionCount(pages[2])).toBe(1);expect(await connectionCount(pages[3])).toBe(1);
+  const peerBefore=await bytes(pages[2],'peer'),healthyBefore=await bytes(pages[3],'peer');
+  await pages[2].evaluate(()=>{
+   const connections=(window as Window&{relayTestConnections?:RTCPeerConnection[]}).relayTestConnections!;
+   connections[0].close();
+  });
+  const switched=owner.locator('[data-testid="relay-member"][data-member-id="CarolExpanded"]');
+  await expect(switched).toContainText('同伴：FayeExpanded',{timeout:25000});
+  await expect(switched).toHaveAttribute('data-receiving','true',{timeout:25000});
+  await expect.poll(()=>bytes(pages[2],'peer')).toBeGreaterThan(peerBefore);
+  await expect.poll(()=>bytes(pages[3],'peer')).toBeGreaterThan(healthyBefore);
+  expect(await bytes(pages[2],'center')).toBe(0);
+  expect(await connectionCount(pages[2])).toBe(2);expect(await connectionCount(pages[3])).toBe(1);
+  await expect.poll(()=>bytes(pages[5],'sent')).toBeGreaterThan(0);
   await owner.screenshot({path:'test-results/browser-relay/expanded-host-overview.png',fullPage:true});
   await owner.getByTestId('relay-panel').screenshot({path:'test-results/browser-relay/expanded-panel.png'});
   await owner.setViewportSize({width:390,height:844});

@@ -253,6 +253,8 @@ func (h *Hub) reset(r *room) {
 	for _, p := range r.peers {
 		p.Media.Reset()
 		p.browser.failed = false
+		p.browser.failure = ""
+		p.browser.blockedParents = nil
 	}
 }
 func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {

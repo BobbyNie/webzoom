@@ -26,7 +26,8 @@ describe('quality adaptation',()=>{
   a.congested(10500);expect(a.level).toBe(1);
   a.congested(14000);expect(a.level).toBe(2);
   a.stable(20000);expect(a.level).toBe(2);
-  a.stable(45000);expect(a.level).toBe(1);
+  for(let now=21000;now<=52000;now+=1000/30){a.stable(now);a.delivered(now)}
+  expect(a.level).toBe(1);
  });
 });
 

@@ -18,7 +18,7 @@ import (
 
 const browserReservationMbps = 8
 const browserMaxFanout = 3
-const browserDefaultViewers = 32
+const browserDefaultViewers = 64
 const browserHardMaxViewers = 64
 const browserEnvelopeHeader = 104
 
@@ -30,11 +30,14 @@ type browserHub struct {
 type browserPeer struct {
 	known, capable, failed, direct bool
 	role, reason, parent, failure  string
+	blockedParents                 map[string]bool
 	report                         *BrowserReport
+	rates                          *BrowserRates
 	reportedAt, lastReport         time.Time
 }
 type browserRoom struct {
 	generation uint32
+	epoch      uint32
 	root       string
 	roots      map[string]bool
 	overviewAt time.Time
@@ -42,12 +45,14 @@ type browserRoom struct {
 }
 type browserLink struct {
 	root, child       string
+	generation        uint32
 	offered, answered bool
 }
 type BrowserLink struct {
-	ID      string `json:"id"`
-	Peer    string `json:"peer"`
-	Offerer bool   `json:"offerer"`
+	Generation uint32 `json:"generation"`
+	ID         string `json:"id"`
+	Peer       string `json:"peer"`
+	Offerer    bool   `json:"offerer"`
 }
 type BrowserPlan struct {
 	RoomID     string            `json:"roomId"`
@@ -127,6 +132,19 @@ func (h *Hub) browserReplan(r *room) {
 	if !h.cfg.BrowserRelayEnabled {
 		return
 	}
+	previousLinks := make(map[[2]string]struct {
+		id   string
+		link browserLink
+	})
+	if r.BrowserRelayEnabled && r.Active && r.browser.epoch == r.Epoch {
+		for id, link := range r.browser.links {
+			previousLinks[[2]string{link.root, link.child}] = struct {
+				id   string
+				link browserLink
+			}{id, link}
+		}
+	}
+	r.browser.epoch = r.Epoch
 	r.browser.generation++
 	r.browser.links = make(map[string]browserLink)
 	plans := make(map[string]*BrowserPlan)
@@ -164,28 +182,44 @@ func (h *Hub) browserReplan(r *room) {
 				addRoot(id)
 			}
 		}
+		addPeer := func(id, parent string) bool {
+			if !roots[parent] || counts[parent] >= browserMaxFanout || r.peers[id].browser.blockedParents[parent] {
+				return false
+			}
+			counts[parent]++
+			linkID, link := token(), browserLink{root: parent, child: id, generation: r.browser.generation}
+			if old, ok := previousLinks[[2]string{parent, id}]; ok {
+				linkID, link = old.id, old.link
+			}
+			r.browser.links[linkID] = link
+			plans[id].Role = "peer"
+			plans[id].Reason = "尝试同伴供流；实际办公网路径仍需核验"
+			if len(r.peers[id].browser.blockedParents) > 0 {
+				plans[id].Reason = "原同伴供流失败，正在尝试另一位转发者"
+			}
+			plans[id].Links = append(plans[id].Links, BrowserLink{ID: linkID, Peer: parent, Generation: link.generation})
+			plans[parent].Links = append(plans[parent].Links, BrowserLink{ID: linkID, Peer: id, Offerer: true, Generation: link.generation})
+			return true
+		}
+		// Keep existing healthy edges before filling spare slots. A late join must
+		// not reshuffle working receivers or renegotiate every data channel.
 		for _, id := range ids {
-			if roots[id] {
+			if !roots[id] {
+				addPeer(id, r.peers[id].browser.parent)
+			}
+		}
+		for _, id := range ids {
+			if roots[id] || plans[id].Role == "peer" {
 				continue
 			}
-			parent := ""
 			for _, root := range orderedRoots {
-				if counts[root] < browserMaxFanout {
-					parent = root
+				if addPeer(id, root) {
 					break
 				}
 			}
-			if parent == "" {
+			if plans[id].Role != "peer" {
 				addRoot(id)
-				continue
 			}
-			counts[parent]++
-			link := token()
-			r.browser.links[link] = browserLink{root: parent, child: id}
-			plans[id].Role = "peer"
-			plans[id].Reason = "尝试同伴供流；实际办公网路径仍需核验"
-			plans[id].Links = append(plans[id].Links, BrowserLink{ID: link, Peer: parent})
-			plans[parent].Links = append(plans[parent].Links, BrowserLink{ID: link, Peer: id, Offerer: true})
 		}
 		r.browser.roots = roots
 		r.browser.root = ""
@@ -266,11 +300,34 @@ func (h *Hub) BrowserControl(p *Peer, c BrowserCommand) error {
 		if !r.BrowserRelayEnabled || c.Generation != r.browser.generation || !r.Active {
 			return nil
 		}
-		if p.User.ID == r.PublisherID || r.browser.roots[p.User.ID] || p.browser.failed {
+		if p.browser.role != "peer" || p.browser.failed {
 			return nil
 		}
-		p.browser.failed = true
 		p.browser.failure = browserFailureCode(c.Failure)
+		if p.browser.blockedParents == nil {
+			p.browser.blockedParents = make(map[string]bool)
+		}
+		p.browser.blockedParents[p.browser.parent] = true
+		p.browser.failed = true
+		// At most three distinct failed parents per sharing epoch. Local setup or
+		// key failures cannot be fixed by probing other computers.
+		if len(p.browser.blockedParents) < 3 && p.browser.failure != "setup_failed" && p.browser.failure != "key_import_failed" {
+			for root := range r.browser.roots {
+				if p.browser.blockedParents[root] {
+					continue
+				}
+				children := 0
+				for _, link := range r.browser.links {
+					if link.root == root {
+						children++
+					}
+				}
+				if children < browserMaxFanout {
+					p.browser.failed = false
+					break
+				}
+			}
+		}
 		h.browserReplan(r)
 	case "report":
 		return h.browserReport(r, p, c)
@@ -279,12 +336,16 @@ func (h *Hub) BrowserControl(p *Peer, c BrowserCommand) error {
 		if s == nil || len(s.SDP) > 12<<10 {
 			return ErrConflict
 		}
-		if !r.BrowserRelayEnabled || !r.Active || s.Generation != r.browser.generation {
+		if !r.BrowserRelayEnabled || !r.Active || s.Generation > r.browser.generation {
 			return nil
 		}
 		link, ok := r.browser.links[s.Link]
 		if !ok {
 			return ErrForbidden
+		}
+		// A retained link may finish negotiation while the room plan advances.
+		if s.Generation < link.generation {
+			return nil
 		}
 		target := ""
 		if s.Type == "offer" && p.User.ID == link.root && !link.offered {

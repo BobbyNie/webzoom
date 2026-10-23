@@ -28,3 +28,20 @@ describe('relay reception dashboard',()=>{
   expect(html).toContain('等待接收端上报');expect(html).toContain('>—</td>');
  });
 });
+
+describe('background and rate reporting',()=>{
+ it('labels background visibility without treating it as a failure or showing stale rates',()=>{
+  const now=Date.now(),background={...row,report:{...row.report!,visibility:'hidden' as const},rates:{centerBps:0,peerBps:1000000,sentBps:0,sampleMs:2000}};
+  const props={status:emptyRelayStatus(),enabled:true,owner:true,disabled:false,toggle:()=>{}};
+  const fresh={...overview,receivedAt:now,participants:[background]};
+  const html=renderToStaticMarkup(<BrowserRelayPanel {...props} overview={fresh}/>);
+  expect(html).toContain('页面在后台（不等于断流）');expect(html).toContain('同伴收流正常');expect(html).toContain('1.00 Mbps');
+  const stale=renderToStaticMarkup(<BrowserRelayPanel {...props} overview={{...fresh,receivedAt:now-10000}}/>);
+  expect(stale).toContain('上次上报时页面在后台，当前状态未知');expect(stale).not.toContain('1.00 Mbps');
+ });
+ it('defaults to the 64-viewer admission cap but honors an explicit smaller deployment cap',()=>{
+  const props={status:emptyRelayStatus(),enabled:false,owner:true,disabled:false,toggle:()=>{}};
+  expect(renderToStaticMarkup(<BrowserRelayPanel {...props}/>)).toContain('64 位观众');
+  expect(renderToStaticMarkup(<BrowserRelayPanel {...props} maxViewers={16}/>)).toContain('16 位观众');
+ });
+});
