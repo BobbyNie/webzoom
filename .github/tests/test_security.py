@@ -88,12 +88,16 @@ class SecurityTests(unittest.TestCase):
         self.assertRegex(dockerfile, r'FROM node:22-alpine@sha256:[0-9a-f]{64} AS frontend')
         self.assertRegex(dockerfile, r'FROM golang:1\.26\.10-alpine@sha256:[0-9a-f]{64} AS backend')
         self.assertEqual(dockerfile.count("'zlib>=1.3.2-r1'"), 2)
+        self.assertEqual(dockerfile.count("'musl>=1.2.6-r3'"), 2)
+        self.assertEqual(dockerfile.count("'musl-utils>=1.2.6-r3'"), 2)
         self.assertIn('npm@12.2.0', dockerfile)
         self.assertIn('USER 65532:65532', dockerfile)
         proxy = ROOT / 'Dockerfile.proxy'
         self.assertTrue(proxy.exists(), 'build a patched proxy instead of using the vulnerable upstream image')
         text = proxy.read_text()
         self.assertIn("'zlib>=1.3.2-r1'", text)
+        for package in ('musl>=1.2.6-r3', 'musl-utils>=1.2.6-r3', 'libexpat>=2.9.0-r0', 'libx11>=1.8.14-r0', 'libxpm>=3.5.20-r0', 'nginx>=1.30.6-r0'):
+            self.assertIn("'" + package + "'", text)
         self.assertTrue(text.rstrip().endswith('USER 101:101'))
         for filename in ('compose.yaml', 'deploy/local/compose.yaml'):
             service = yaml.safe_load((ROOT / filename).read_text())['services']['proxy']

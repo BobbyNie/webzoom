@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS frontend
-RUN apk add --no-cache 'zlib>=1.3.2-r1' && npm install --global npm@12.2.0 && npm cache clean --force
+RUN apk add --no-cache 'zlib>=1.3.2-r1' 'musl>=1.2.6-r3' 'musl-utils>=1.2.6-r3' && npm install --global npm@12.2.0 && npm cache clean --force
 # Replace bundled npm dependencies with the audited, integrity-locked upstream packages.
 COPY .github/security/npm/package.json .github/security/npm/package-lock.json /usr/local/lib/node_modules/npm/
 RUN npm ci --prefix /usr/local/lib/node_modules/npm --ignore-scripts && npm cache clean --force
@@ -11,7 +11,7 @@ COPY web/ ./
 RUN npm test && npm run build
 
 FROM golang:1.26.10-alpine@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS backend
-RUN apk add --no-cache 'zlib>=1.3.2-r1'
+RUN apk add --no-cache 'zlib>=1.3.2-r1' 'musl>=1.2.6-r3' 'musl-utils>=1.2.6-r3'
 ENV CGO_ENABLED=0
 WORKDIR /src
 COPY go.mod go.sum ./
