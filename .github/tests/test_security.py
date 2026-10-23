@@ -106,6 +106,13 @@ class SecurityTests(unittest.TestCase):
             self.assertEqual(service['build']['dockerfile'], 'Dockerfile.proxy')
         self.assertIn('const nginxImage = "webzoom-proxy:local"', (ROOT / 'internal/deploy/deploy_test.go').read_text())
 
+    def test_proxy_drops_only_unused_version_coupled_modules(self):
+        proxy = (ROOT / 'Dockerfile.proxy').read_text()
+        self.assertIn('apk del --no-cache nginx-module-geoip nginx-module-image-filter nginx-module-njs nginx-module-xslt', proxy)
+        for filename in ('deploy/nginx.conf', 'deploy/local/nginx.conf'):
+            text = (ROOT / filename).read_text()
+            self.assertNotRegex(text, r'(?m)^\s*(?:load_module|geoip\w*|image_filter|js_\w*|xslt\w*)\s')
+
     def test_npm_build_tool_patches_are_locked_without_changing_app_dependencies(self):
         path = ROOT / '.github/security/npm/package-lock.json'
         self.assertTrue(path.is_file(), 'lock the patched npm build tool separately from application dependencies')

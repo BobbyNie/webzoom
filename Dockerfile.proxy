@@ -1,7 +1,9 @@
 # The build step patches upstream packages. The final image runs as UID 101.
 FROM nginxinc/nginx-unprivileged:stable-alpine@sha256:56b8272e43a0525f67aed68d1e0794a712d10e3e45a563e118e9a77c817e6f86
 USER root
-# Upgrade the proxy and its version-coupled modules together before enforcing fixes.
-RUN apk upgrade --no-cache && apk add --no-cache 'zlib>=1.3.2-r1' 'musl>=1.2.6-r3' 'musl-utils>=1.2.6-r3' \
+# These optional modules are not used by either checked-in proxy configuration.
+# Drop their old nginx ABI pins before installing the security-fixed core.
+RUN apk del --no-cache nginx-module-geoip nginx-module-image-filter nginx-module-njs nginx-module-xslt \
+    && apk upgrade --no-cache && apk add --no-cache 'zlib>=1.3.2-r1' 'musl>=1.2.6-r3' 'musl-utils>=1.2.6-r3' \
     'libexpat>=2.9.0-r0' 'libx11>=1.8.14-r0' 'libxpm>=3.5.20-r0' 'nginx>=1.30.6-r0'
 USER 101:101
