@@ -61,7 +61,7 @@ test('creation explains bandwidth denial without showing a load-test limit',asyn
 test('waiting for bandwidth does not exhaust reconnection attempts and resumes',async({page})=>{
  await page.clock.install();await page.route('**/api/me',r=>r.fulfill({json:identity}));let denied=true,calls=0;
  await page.route('**/api/rooms/bandwidth-room',r=>{calls++;return denied?r.fulfill({status:503,headers:{'X-WebZoom-Error':'bandwidth_limit'},body:'bandwidth limit exceeded'}):r.fulfill({json:{id:'bandwidth-room',ownerId:'other',publisherId:'other',participants:[],active:false,epoch:0,quality:0,createdAt:'2026-10-13T00:00:00Z',expiresAt:'2026-10-13T08:00:00Z'}})});
- await page.routeWebSocket('**/api/rooms/bandwidth-room/ws',()=>{});await page.goto('/m/bandwidth-room');await expect(page.getByText('总媒体流量已超过上限。暂不允许创建会议或接入会议。')).toBeVisible();
+ await page.routeWebSocket(/\/api\/rooms\/bandwidth-room\/ws(?:\?.*)?$/,()=>{});await page.goto('/m/bandwidth-room');await expect(page.getByText('总媒体流量已超过上限。暂不允许创建会议或接入会议。')).toBeVisible();
  for(let i=0;i<10;i++){await page.clock.runFor(5001);await expect.poll(()=>calls).toBe(i+2)}
  await expect(page.getByText('会议已结束',{exact:true})).toHaveCount(0);denied=false;await page.clock.runFor(5001);await expect(page.getByText('已连接',{exact:true})).toBeVisible();await expect(page.getByText('总媒体流量已超过上限。暂不允许创建会议或接入会议。')).toHaveCount(0);
 });

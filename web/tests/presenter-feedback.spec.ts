@@ -63,7 +63,7 @@ test('native Document PiP shows remote strokes and named pointers, supports zoom
   const a = await browser.newContext({ignoreHTTPSErrors: true}), b = await browser.newContext({ignoreHTTPSErrors: true});
   const owner = await a.newPage(), guest = await b.newPage();
   const errors: string[] = []; let mediaConnections = 0;
-  owner.on('websocket', socket => { if (/\/api\/rooms\/[^/]+\/ws$/.test(socket.url())) mediaConnections++; });
+  owner.on('websocket', socket => { if (/\/api\/rooms\/[^/]+\/ws(?:\?.*)?$/.test(socket.url())) mediaConnections++; });
   owner.on('pageerror', e => errors.push(e.message));
   try {
     await start(owner, 'FeedbackOwner');
@@ -175,7 +175,7 @@ test('transfer removes feedback access from the old presenter; the new presenter
 
 test('a disconnected presenter cannot retain a stale PiP window', async ({page}) => {
   let disconnect = () => {};
-  await page.routeWebSocket(/\/api\/rooms\/[^/]+\/ws$/, socket => {
+  await page.routeWebSocket(/\/api\/rooms\/[^/]+\/ws(?:\?.*)?$/, socket => {
     const server = socket.connectToServer();
     disconnect = () => { socket.close({code: 1001, reason: 'test disconnect'}); server.close(); };
   });
@@ -210,7 +210,7 @@ test('pointer expires in the PiP document even when a clear event is lost', asyn
   try {
     const owner = await a.newPage(), guest = await b.newPage();
     let dropPointerEvents = false;
-    await owner.routeWebSocket(/\/api\/rooms\/[^/]+\/ws$/, socket => {
+    await owner.routeWebSocket(/\/api\/rooms\/[^/]+\/ws(?:\?.*)?$/, socket => {
       const server = socket.connectToServer();
       server.onMessage(message => {
         if (typeof message === 'string' && dropPointerEvents) {

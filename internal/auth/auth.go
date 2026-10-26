@@ -201,7 +201,7 @@ func (m *Manager) Callback(w http.ResponseWriter, r *http.Request) {
 	m.sessions[s.ID].token = tok
 	m.sessions[s.ID].nonce = p.Nonce
 	m.mu.Unlock()
-	cookie(w, SessionCookie, s.ID, s.ExpiresAt)
+	m.SetSessionCookie(w, s)
 	http.Redirect(w, r, p.Next, 302)
 }
 func (m *Manager) NewSession(u meeting.User, expiry time.Time) (*Session, error) {
@@ -247,7 +247,16 @@ func (m *Manager) Origin() string                    { return m.origin }
 func (m *Manager) Delete(id string)                  { m.mu.Lock(); defer m.mu.Unlock(); delete(m.sessions, id) }
 func (m *Manager) ClearCookie(w http.ResponseWriter) { cookie(w, SessionCookie, "", time.Unix(0, 0)) }
 
-// SetSessionCookie updates the browser deadline after a validated refresh.
+// SetSessionCookie retains the opaque browser handle within the fixed session cap.
 func (m *Manager) SetSessionCookie(w http.ResponseWriter, s *Session) {
-	cookie(w, SessionCookie, s.ID, s.ExpiresAt)
+	// Retain the opaque handle up to the fixed cap so a live WS can renew
+	// without response headers. This does NOT extend server authorization:
+	// every HTTP/WS use still checks the actual session/token deadline.
+	m.mu.Lock()
+	deadline := s.ExpiresAt
+	if state := m.sessions[s.ID]; state != nil {
+		deadline = state.maxExpiry
+	}
+	m.mu.Unlock()
+	cookie(w, SessionCookie, s.ID, deadline)
 }

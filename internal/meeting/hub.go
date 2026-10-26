@@ -52,6 +52,7 @@ type Event struct {
 	ServerTime      int64            `json:"serverTime,omitempty"`
 }
 type Peer struct {
+	recoveredGrantUntil     time.Time
 	browser                 browserPeer
 	traffic                 *traffic
 	annotationRequestWindow time.Time
@@ -63,7 +64,16 @@ type Peer struct {
 	Done                    chan struct{}
 	Reason                  string
 }
+type reconnectGrant struct {
+	session string
+	epoch   uint32
+	until   time.Time
+}
+
+const annotationReconnectGrace = 30 * time.Second
+
 type room struct {
+	reconnectGrants    map[string]reconnectGrant
 	browser            browserRoom
 	annotations        annotationRoom
 	annotators         map[string]bool
@@ -216,6 +226,16 @@ func (h *Hub) Join(id string, u User, session string) (*Peer, error) {
 		return nil, ErrBandwidth
 	}
 	p := &Peer{traffic: &r.traffic, User: u, SessionID: session, RoomID: id, Events: make(chan Event, 32), Media: media.NewQueue(8, 2<<20), Done: make(chan struct{})}
+	if grant, ok := r.reconnectGrants[u.ID]; ok {
+		delete(r.reconnectGrants, u.ID)
+		if grant.session == session && grant.epoch == r.Epoch && h.cfg.Now().Before(grant.until) {
+			if r.annotators == nil {
+				r.annotators = map[string]bool{}
+			}
+			r.annotators[u.ID] = true
+			p.recoveredGrantUntil = grant.until
+		}
+	}
 	r.peers[u.ID] = p
 	r.emptyAt = time.Time{}
 	h.broadcast(r)
@@ -244,6 +264,7 @@ func (h *Hub) broadcast(r *room) {
 	}
 }
 func (h *Hub) reset(r *room) {
+	clear(r.reconnectGrants)
 	r.annotations = annotationRoom{}
 	r.Epoch++
 	r.Active = false
@@ -258,11 +279,44 @@ func (h *Hub) reset(r *room) {
 	}
 }
 func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
+	return h.ActionAtEpoch(id, actor, action, target, nil)
+}
+
+// ActionAtEpoch rejects delayed controls atomically with the mutation. A stop
+// from an old capture must never stop a replacement share by the same user.
+func (h *Hub) ActionAtEpoch(id, actor, action, target string, expected *uint32) (Snapshot, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	return h.actionAtEpoch(id, actor, action, target, expected)
+}
+
+// SharingControl only accepts the current transport's own bounded sharing
+// cleanup, not controls arriving from a replaced or already removed peer.
+func (h *Hub) SharingControl(p *Peer, action string, expected *uint32) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	r := h.rooms[p.RoomID]
+	if r == nil || r.peers[p.User.ID] != p || expected == nil || (action != "stop" && action != "cancel-start") {
+		return ErrForbidden
+	}
+	_, err := h.actionAtEpoch(p.RoomID, p.User.ID, action, "", expected)
+	return err
+}
+
+func (h *Hub) actionAtEpoch(id, actor, action, target string, expected *uint32) (Snapshot, error) {
 	r, e := h.room(id)
 	if e != nil {
 		return Snapshot{}, e
+	}
+	if action == "cancel-start" {
+		// A start advances the epoch exactly once. Cancellation either fences
+		// the not-yet-applied start or stops that start's active epoch. It must
+		// never stop an already-active original epoch or a later replacement.
+		if expected == nil || !((r.Epoch == *expected && !r.Active) || (r.Epoch == *expected+1 && r.Active)) {
+			return Snapshot{}, ErrConflict
+		}
+	} else if expected != nil && *expected != r.Epoch {
+		return Snapshot{}, ErrConflict
 	}
 	if action == "end" {
 		if actor != r.OwnerID {
@@ -271,6 +325,14 @@ func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
 		s := snapshot(r)
 		h.end(r, "meeting ended")
 		return s, nil
+	}
+	if action == "leave" {
+		// Explicit exit also cancels recovery while the user's WS is offline.
+		delete(r.reconnectGrants, actor)
+		if p := r.peers[actor]; p != nil {
+			h.leave(p, "left")
+		}
+		return snapshot(r), nil
 	}
 	if r.peers[actor] == nil {
 		return Snapshot{}, ErrForbidden
@@ -342,9 +404,11 @@ func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
 		if actor != r.OwnerID {
 			return Snapshot{}, ErrForbidden
 		}
-		if r.peers[target] == nil || target == r.OwnerID {
+		_, reconnecting := r.reconnectGrants[target]
+		if (r.peers[target] == nil && !(action == "annotation-revoke" && reconnecting)) || target == r.OwnerID {
 			return Snapshot{}, ErrConflict
 		}
+		delete(r.reconnectGrants, target)
 		if (action == "annotation-approve" || action == "annotation-deny") && !r.annotationRequests[target] {
 			// A stale approval must not grant a cancelled or already denied request.
 			return snapshot(r), nil
@@ -357,7 +421,11 @@ func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
 			r.annotators[target] = true
 		} else if action == "annotation-revoke" {
 			delete(r.annotators, target)
-			h.annotationBroadcast(r, AnnotationEvent{Kind: "pointer", Epoch: r.Epoch, Generation: r.annotations.generation, User: r.peers[target].User})
+			user := User{ID: target}
+			if peer := r.peers[target]; peer != nil {
+				user = peer.User
+			}
+			h.annotationBroadcast(r, AnnotationEvent{Kind: "pointer", Epoch: r.Epoch, Generation: r.annotations.generation, User: user})
 		}
 	case "transfer":
 		if actor != r.OwnerID {
@@ -380,7 +448,7 @@ func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
 		}
 		h.reset(r)
 		r.Active = true
-	case "stop":
+	case "stop", "cancel-start":
 		if actor != r.PublisherID {
 			return Snapshot{}, ErrForbidden
 		}
@@ -389,10 +457,10 @@ func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
 		return Snapshot{}, ErrConflict
 	}
 	h.broadcast(r)
-	if action == "browser-relay-on" || action == "browser-relay-off" || action == "start" || action == "stop" || action == "transfer" {
+	if action == "browser-relay-on" || action == "browser-relay-off" || action == "start" || action == "stop" || action == "cancel-start" || action == "transfer" {
 		h.browserReplan(r)
 	}
-	if action == "start" || action == "stop" || action == "transfer" {
+	if action == "start" || action == "stop" || action == "cancel-start" || action == "transfer" {
 		h.broadcastAnnotations(r)
 	}
 	return snapshot(r), nil
@@ -408,6 +476,47 @@ func (h *Hub) end(r *room, reason string) {
 		p.Media.Reset()
 	}
 	delete(h.rooms, r.ID)
+}
+
+// Disconnect preserves only a short-lived viewer grant, never a publisher's
+// stream or a pending request. Leave remains an explicit, irrevocable exit.
+func (h *Hub) Disconnect(p *Peer) { h.disconnect(p, false) }
+
+// AbortJoin rolls back an unsuccessful upgrade without extending the original
+// recovery deadline. Only an established transport earns a fresh grace period.
+func (h *Hub) AbortJoin(p *Peer) { h.disconnect(p, true) }
+func (h *Hub) disconnect(p *Peer, failedJoin bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	r := h.rooms[p.RoomID]
+	if r == nil || r.peers[p.User.ID] != p {
+		return
+	}
+	now := h.cfg.Now()
+	for id, g := range r.reconnectGrants {
+		if !now.Before(g.until) {
+			delete(r.reconnectGrants, id)
+		}
+	}
+	select {
+	case <-p.Done:
+		h.leave(p, "disconnected")
+		return
+	default:
+	}
+	if r.annotators[p.User.ID] && p.User.ID != r.PublisherID && p.User.ID != r.OwnerID && len(r.reconnectGrants) < 128 {
+		if r.reconnectGrants == nil {
+			r.reconnectGrants = map[string]reconnectGrant{}
+		}
+		until := now.Add(annotationReconnectGrace)
+		if failedJoin && !p.recoveredGrantUntil.IsZero() {
+			until = p.recoveredGrantUntil
+		}
+		if now.Before(until) {
+			r.reconnectGrants[p.User.ID] = reconnectGrant{session: p.SessionID, epoch: r.Epoch, until: until}
+		}
+	}
+	h.leave(p, "disconnected")
 }
 func (h *Hub) Leave(p *Peer) { h.mu.Lock(); defer h.mu.Unlock(); h.leave(p, "disconnected") }
 func (h *Hub) leave(p *Peer, reason string) {
@@ -442,6 +551,11 @@ func (h *Hub) RevokeSession(id string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for _, r := range h.rooms {
+		for user, g := range r.reconnectGrants {
+			if g.session == id {
+				delete(r.reconnectGrants, user)
+			}
+		}
 		for _, p := range r.peers {
 			if p.SessionID == id {
 				h.leave(p, "session expired")

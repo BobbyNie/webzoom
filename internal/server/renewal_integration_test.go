@@ -31,6 +31,7 @@ type renewalProvider struct {
 	failure, badClaim                 string
 	lifetime                          int
 	key                               *rsa.PrivateKey
+	started, release                  chan struct{}
 }
 
 func newRenewalLogin(t *testing.T, lifetime int, origin string) (*auth.Manager, *auth.Session, *renewalProvider) {
@@ -103,6 +104,12 @@ func (p *renewalProvider) token(w http.ResponseWriter, r *http.Request) {
 		}
 		life = 300
 		p.refresh = "refresh-rotated"
+		if p.started != nil {
+			started, release := p.started, p.release
+			p.started = nil
+			close(started)
+			<-release
+		}
 	} else {
 		hash := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
 		if base64.RawURLEncoding.EncodeToString(hash[:]) != p.challenge {
@@ -219,6 +226,133 @@ func TestRefreshProviderFailureHTTPPolicy(t *testing.T) {
 					t.Fatal("cookie not cleared")
 				}
 			}
+		})
+	}
+}
+
+func TestMeetingSocketRenewsWithoutBrowserHTTPRequests(t *testing.T) {
+	ts := httptest.NewUnstartedServer(nil)
+	origin := "https://" + ts.Listener.Addr().String()
+	a, s, provider := newRenewalLogin(t, 3, origin)
+	h := meeting.New(meeting.Config{})
+	ts.Config.Handler = New(Config{Auth: a, Hub: h})
+	ts.StartTLS()
+	defer ts.Close()
+	room, _ := h.Create(s.User)
+	ctx, cancel := context.WithTimeout(context.Background(), 9*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "wss"+strings.TrimPrefix(ts.URL, "https")+"/api/rooms/"+room.ID+"/ws?mediaAck=1", &websocket.DialOptions{HTTPClient: ts.Client(), HTTPHeader: http.Header{"Origin": []string{ts.URL}, "Cookie": []string{auth.SessionCookie + "=" + s.ID}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	// No /auth/refresh request is made by this browser.
+	time.Sleep(time.Until(s.ExpiresAt) + 500*time.Millisecond)
+	renewed, ok := a.ByID(s.ID)
+	if !ok || !renewed.ExpiresAt.After(s.ExpiresAt) {
+		t.Fatal("live meeting was not renewed")
+	}
+	provider.mu.Lock()
+	calls := provider.calls
+	provider.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("refresh calls=%d", calls)
+	}
+	a.Delete(s.ID)
+	h.RevokeSession(s.ID)
+	if _, ok := a.ByID(s.ID); ok {
+		t.Fatal("logout revived session")
+	}
+	if _, _, err := conn.Read(ctx); err == nil {
+		for {
+			if _, _, err = conn.Read(ctx); err != nil {
+				break
+			}
+		}
+	}
+	if _, ok := a.ByID(s.ID); ok {
+		t.Fatal("socket renewal undid logout")
+	}
+}
+
+func TestMeetingRotationFinishesAcrossSocketExit(t *testing.T) {
+	for _, mode := range []string{"transport-drop", "logout"} {
+		t.Run(mode, func(t *testing.T) {
+			ts := httptest.NewUnstartedServer(nil)
+			origin := "https://" + ts.Listener.Addr().String()
+			manager, session, provider := newRenewalLogin(t, 6, origin)
+			hub := meeting.New(meeting.Config{})
+			ts.Config.Handler = New(Config{Auth: manager, Hub: hub})
+			ts.StartTLS()
+			defer ts.Close()
+			room, _ := hub.Create(session.User)
+			started, release := make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			unblock := func() { once.Do(func() { close(release) }) }
+			// Release before test-server cleanup even on an assertion failure.
+			defer unblock()
+			provider.mu.Lock()
+			provider.started, provider.release = started, release
+			provider.mu.Unlock()
+			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			defer cancel()
+			conn, _, err := websocket.Dial(ctx, "wss"+strings.TrimPrefix(ts.URL, "https")+"/api/rooms/"+room.ID+"/ws?mediaAck=1", &websocket.DialOptions{HTTPClient: ts.Client(), HTTPHeader: http.Header{"Origin": []string{ts.URL}, "Cookie": []string{auth.SessionCookie + "=" + session.ID}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.CloseNow()
+			select {
+			case <-started:
+			case <-ctx.Done():
+				t.Fatal("meeting refresh did not start")
+			}
+			if mode == "logout" {
+				manager.Delete(session.ID)
+				hub.RevokeSession(session.ID)
+			}
+			conn.CloseNow()
+			deadline := time.Now().Add(time.Second)
+			for {
+				_, connections, _ := hub.Counts()
+				if connections == 0 {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("socket exit was not processed")
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+			unblock()
+			if mode == "logout" {
+				// Wait for the provider response and leave time for a forbidden revival.
+				provider.mu.Lock()
+				provider.mu.Unlock()
+				time.Sleep(100 * time.Millisecond)
+				if _, ok := manager.ByID(session.ID); ok {
+					t.Fatal("in-flight rotation revived logout")
+				}
+				return
+			}
+			deadline = time.Now().Add(2 * time.Second)
+			for {
+				current, ok := manager.ByID(session.ID)
+				if !ok {
+					t.Fatal("transport exit invalidated the login")
+				}
+				if current.ExpiresAt.After(session.ExpiresAt) {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("socket cancellation discarded the rotated token")
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+			// The saved token can be used by a new meeting connection.
+			next, _, err := websocket.Dial(ctx, "wss"+strings.TrimPrefix(ts.URL, "https")+"/api/rooms/"+room.ID+"/ws?mediaAck=1", &websocket.DialOptions{HTTPClient: ts.Client(), HTTPHeader: http.Header{"Origin": []string{ts.URL}, "Cookie": []string{auth.SessionCookie + "=" + session.ID}}})
+			if err != nil {
+				t.Fatalf("new connection after rotation: %v", err)
+			}
+			next.CloseNow()
 		})
 	}
 }

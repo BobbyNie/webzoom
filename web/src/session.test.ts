@@ -2,7 +2,7 @@ import {afterEach,expect,test,vi} from 'vitest';
 import {keepSessionAlive} from './session';
 import {APIError} from './api';
 import type {Identity} from './types';
-afterEach(()=>{vi.useRealTimers()});
+afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers()});
 function setup(active=true){
  vi.useFakeTimers();vi.setSystemTime(new Date('2026-10-12T00:00:00Z'));
  const identity:Identity={user:{id:'alice',name:'Alice'},csrf:'csrf',expiresAt:new Date(Date.now()+300000).toISOString()};
@@ -53,4 +53,29 @@ test('idle tab observes renewal from another tab without refreshing tokens itsel
  await vi.advanceTimersByTimeAsync(301000);
  expect(inspect).toHaveBeenCalledTimes(1);expect(options.renew).not.toHaveBeenCalled();
  expect(options.onExpired).not.toHaveBeenCalled();expect(options.onRenewed).toHaveBeenCalledWith(renewed);stop();
+});
+
+test('transient inspection failure after local expiry retries instead of logging out',async()=>{
+ const {options,renewed}=setup();
+ const inspect=vi.fn().mockRejectedValueOnce(new TypeError('offline')).mockResolvedValue(renewed);
+ const stop=keepSessionAlive({...options,inspect});
+ vi.setSystemTime(Date.now()+301000);await vi.advanceTimersByTimeAsync(32000);
+ expect(inspect).toHaveBeenCalledTimes(2);expect(options.onUnavailable).toHaveBeenCalledTimes(1);
+ expect(options.onExpired).not.toHaveBeenCalled();expect(options.onRenewed).toHaveBeenCalledWith(renewed);stop();
+});
+test('confirmed 401 after local expiry still terminates the session',async()=>{
+ const {options}=setup();const inspect=vi.fn().mockRejectedValue(new APIError(401,'expired'));
+ const stop=keepSessionAlive({...options,inspect});vi.setSystemTime(Date.now()+301000);await vi.advanceTimersByTimeAsync(30000);
+ expect(options.onExpired).toHaveBeenCalledTimes(1);expect(inspect).toHaveBeenCalledTimes(1);stop();
+});
+test('page resume checks immediately and does not overlap requests or leak listeners',async()=>{
+ const {options,renewed}=setup();const doc=new EventTarget(),win=new EventTarget();
+ vi.stubGlobal('document',doc);vi.stubGlobal('window',win);
+ let resolve!:(identity:Identity)=>void;const inspect=vi.fn(()=>new Promise<Identity>(r=>{resolve=r}));
+ const stop=keepSessionAlive({...options,inspect});vi.setSystemTime(Date.now()+301000);
+ doc.dispatchEvent(new Event('visibilitychange'));win.dispatchEvent(new Event('pageshow'));
+ expect(inspect).toHaveBeenCalledTimes(1);resolve(renewed);await Promise.resolve();await Promise.resolve();
+ expect(options.onRenewed).toHaveBeenCalledWith(renewed);stop();
+ doc.dispatchEvent(new Event('visibilitychange'));win.dispatchEvent(new Event('pageshow'));
+ expect(inspect).toHaveBeenCalledTimes(1);expect(vi.getTimerCount()).toBe(0);vi.unstubAllGlobals();
 });

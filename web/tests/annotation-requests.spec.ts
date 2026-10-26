@@ -86,6 +86,8 @@ test('pending requests survive host reload; leaving removes them and forged appr
     expect(status).toBe(403);
     await host.reload(); await expect(requests(host).getByRole('button', {name: '同意 QueueGuest 的批注申请', exact: true})).toBeEnabled();
     await guest.getByRole('link', {name: '离开会议', exact: true}).click();
+    // Leave now waits for bounded notification; do not navigate ahead of its redirect.
+    await expect(guest).toHaveURL(new URL('/', link).href);
     await expect(requests(host)).toContainText('暂无待处理申请');
     await guest.goto(link); await expect(permission(guest).getByRole('button', {name: '申请批注', exact: true})).toBeEnabled();
     await expect(requests(host)).toContainText('暂无待处理申请');

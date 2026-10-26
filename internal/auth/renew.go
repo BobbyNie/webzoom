@@ -49,14 +49,18 @@ func (m *Manager) Renew(ctx context.Context, id string) (*Session, error) {
 	}
 	refreshToken, nonce, maxExpiry := state.token.RefreshToken, state.nonce, state.maxExpiry
 	m.mu.Unlock()
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	// Once rotation starts, finish saving its result even if this HTTP/WS caller
+	// disappears. Cancelling the transport can discard the replacement after
+	// the provider has invalidated the old token. The operation stays bounded;
+	// the checks below still prevent logout/expiry from reviving a session.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 	defer cancel()
 	ctx = oidc.ClientContext(ctx, m.client)
 	// Force a refresh before expiry. The returned rotated refresh token replaces the old one.
 	tok, err := m.oauth.TokenSource(ctx, &oauth2.Token{RefreshToken: refreshToken}).Token()
 	if err != nil {
 		var providerError *oauth2.RetrieveError
-		if errors.As(err, &providerError) && providerError.Response.StatusCode >= 400 && providerError.Response.StatusCode < 500 && providerError.Response.StatusCode != 429 {
+		if errors.As(err, &providerError) && providerError.ErrorCode == "invalid_grant" {
 			m.Delete(id)
 			return nil, ErrExpired
 		}

@@ -13,31 +13,37 @@ interface KeepaliveOptions {
 // A connected meeting counts as activity even when its tab is hidden.
 // Use sequential requests so refresh-token rotation cannot overlap in one page.
 export function keepSessionAlive(options:KeepaliveOptions):()=>void {
- let expires=Date.parse(options.expiresAt),disposed=false;
+ let expires=Date.parse(options.expiresAt),disposed=false,running=false,retryMs=1000;
  let timer:ReturnType<typeof setTimeout>,controller:AbortController|undefined;
- const schedule=()=>{timer=setTimeout(()=>void tick(),Math.min(30000,Math.max(1000,(expires-Date.now())/3)))};
+ const schedule=()=>{timer=setTimeout(()=>void tick(),Date.now()>=expires?retryMs:Math.min(30000,Math.max(1000,(expires-Date.now())/3)))};
+ const resume=()=>{if(disposed||running)return;clearTimeout(timer);void tick()};
+ if(typeof document!=='undefined')document.addEventListener('visibilitychange',resume);
+ if(typeof window!=='undefined')window.addEventListener('pageshow',resume);
  const expire=()=>{disposed=true;options.onExpired()};
  async function tick(){
-  if(disposed)return;
+  if(disposed||running)return;
   const elapsed=Date.now()>=expires;
   if(elapsed&&!options.inspect){expire();return}
   if(elapsed||(options.active()&&expires-Date.now()<=60000)){
-   controller=new AbortController();const timeout=setTimeout(()=>controller?.abort(),15000);
+   running=true;controller=new AbortController();const timeout=setTimeout(()=>controller?.abort(),15000);
    try{
     // Another tab may have updated the shared Cookie. Inspect without extending idle sessions.
     const identity=await (elapsed?options.inspect!:options.renew)(controller.signal);
     if(disposed)return;
     expires=Date.parse(identity.expiresAt);
     if(!Number.isFinite(expires)||expires<=Date.now()){expire();return}
-    options.onRenewed(identity);options.onRecovered();
+    retryMs=1000;options.onRenewed(identity);options.onRecovered();
    }catch(error){
     if(disposed)return;
-    if(elapsed||(error instanceof APIError&&error.status===401)){expire();return}
-    options.onUnavailable();
-   }finally{clearTimeout(timeout);controller=undefined}
+    if(error instanceof APIError&&error.status===401){expire();return}
+    options.onUnavailable();retryMs=Math.min(30000,retryMs*2);
+   }finally{clearTimeout(timeout);controller=undefined;running=false}
   }
   if(!disposed)schedule();
  }
  schedule();
- return()=>{disposed=true;clearTimeout(timer);controller?.abort()};
+ return()=>{disposed=true;clearTimeout(timer);controller?.abort();
+  if(typeof document!=='undefined')document.removeEventListener('visibilitychange',resume);
+  if(typeof window!=='undefined')window.removeEventListener('pageshow',resume);
+ };
 }

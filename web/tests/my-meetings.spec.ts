@@ -70,7 +70,7 @@ test('pressure-test capacity error is explicit and expired login returns to sign
 test('meeting participant names remain visible without a headcount badge', async ({page}) => {
   await signedIn(page);
   await page.route('**/api/rooms/owned-room', route => route.fulfill({json: ownRoom}));
-  await page.routeWebSocket('**/api/rooms/owned-room/ws', ws => ws.send(JSON.stringify({type: 'room', room: ownRoom})));
+  await page.routeWebSocket(/\/api\/rooms\/owned-room\/ws(?:\?.*)?$/, ws => ws.send(JSON.stringify({type: 'room', room: ownRoom})));
   await page.goto('/m/owned-room');
   await expect(page.getByRole('heading', {name: '参与者', exact: true}).locator('..')).toHaveText('参与者');
   await expect(page.getByRole('listitem').getByText('Bob', {exact: true})).toBeVisible();

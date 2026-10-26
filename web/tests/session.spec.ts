@@ -5,7 +5,7 @@ async function viewer(page:Page,status=200){
  await page.clock.install();
  await page.route('**/api/me',r=>r.fulfill({json:{user:{id:'viewer',name:'Viewer'},csrf:'test-csrf',expiresAt:new Date(Date.now()+9000).toISOString()}}));
  await page.route('**/api/rooms/renew-test',r=>r.fulfill({json:room}));
- await page.routeWebSocket('**/api/rooms/renew-test/ws',ws=>{sockets++;ws.send(JSON.stringify({type:'room',room}))});
+ await page.routeWebSocket(/\/api\/rooms\/renew-test\/ws(?:\?.*)?$/,ws=>{sockets++;ws.send(JSON.stringify({type:'room',room}))});
  await page.route('**/auth/refresh',async r=>{
   refreshes++;expect(r.request().method()).toBe('POST');expect(r.request().headers()['x-csrf-token']).toBe('test-csrf');
   await r.fulfill(status===200?{json:{user:{id:'viewer',name:'Viewer'},csrf:'test-csrf',expiresAt:new Date(Date.now()+300000).toISOString()}}:{status,body:'refresh failed'});

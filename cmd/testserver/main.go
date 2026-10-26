@@ -125,7 +125,14 @@ func main() {
 		log.Fatal(e)
 	}
 	hub := meeting.New(meeting.Config{BrowserRelayEnabled: os.Getenv("BROWSER_RELAY_ENABLED") == "true"})
-	app := httptest.NewUnstartedServer(server.New(server.Config{Auth: manager, Hub: hub, StaticDir: "web/dist", MetricsToken: "test-metrics", AdminUserIDs: os.Getenv("ADMIN_USER_IDS")}))
+	application := server.New(server.Config{Auth: manager, Hub: hub, StaticDir: "web/dist", MetricsToken: "test-metrics", AdminUserIDs: os.Getenv("ADMIN_USER_IDS")})
+	testMux := http.NewServeMux()
+	// Fault injection for native browser WebSocket handshake deadlines. Test tools only.
+	testMux.HandleFunc("GET /__test__/pending-ws", func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	})
+	testMux.Handle("/", application)
+	app := httptest.NewUnstartedServer(testMux)
 	app.Listener.Close()
 	app.Listener = listener
 	app.StartTLS()

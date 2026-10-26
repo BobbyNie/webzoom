@@ -11,7 +11,7 @@ async function openViewer(page: Page) {
     expiresAt: new Date(Date.now() + 3600000).toISOString(),
   }}));
   await page.route('**/api/rooms/fullscreen-test', route => route.fulfill({json: room}));
-  await page.routeWebSocket('**/api/rooms/fullscreen-test/ws', ws => {
+  await page.routeWebSocket(/\/api\/rooms\/fullscreen-test\/ws(?:\?.*)?$/, ws => {
     ws.send(JSON.stringify({type: 'room', room}));
   });
   await page.goto('/m/fullscreen-test');

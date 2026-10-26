@@ -308,3 +308,93 @@ func TestLogoutDuringRefreshDoesNotReviveSession(t *testing.T) {
 		t.Fatal("logout undone by refresh")
 	}
 }
+
+func TestTemporaryOAuth4xxDoesNotRevokeValidSession(t *testing.T) {
+	for _, failure := range []string{"temporarily_unavailable", "server_error", "invalid_client"} {
+		t.Run(failure, func(t *testing.T) {
+			m, s, p := newRenewalLogin(t, 30)
+			p.mu.Lock()
+			p.failure = failure
+			p.mu.Unlock()
+			if _, err := m.Renew(context.Background(), s.ID); !errors.Is(err, ErrRefreshUnavailable) {
+				t.Fatalf("expected unavailable, got %v", err)
+			}
+			if _, ok := m.ByID(s.ID); !ok {
+				t.Fatal("temporary/configuration error destroyed valid session")
+			}
+		})
+	}
+}
+func TestMeetingCookieHandleDoesNotAuthorizeExpiredSession(t *testing.T) {
+	m := NewStore("https://share.example")
+	s, _ := m.NewSession(meeting.User{ID: "viewer"}, time.Now().Add(20*time.Second))
+	out := httptest.NewRecorder()
+	m.SetSessionCookie(out, s)
+	c := out.Result().Cookies()[0]
+	if !c.HttpOnly || !c.Secure || !c.Expires.After(s.ExpiresAt) || c.Expires.After(time.Now().Add(8*time.Hour)) {
+		t.Fatal("invalid cookie boundary", c)
+	}
+	m.mu.Lock()
+	m.sessions[s.ID].ExpiresAt = time.Now().Add(-time.Second)
+	m.mu.Unlock()
+	req := httptest.NewRequest("GET", "https://share.example/api/me", nil)
+	req.AddCookie(c)
+	if _, ok := m.Session(req); ok {
+		t.Fatal("retained handle revived expired session")
+	}
+}
+
+func TestRefreshRotationSurvivesCallerCancellation(t *testing.T) {
+	m, session, provider := newRenewalLogin(t, 30)
+	started, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	t.Cleanup(unblock)
+	provider.mu.Lock()
+	provider.started, provider.release = started, release
+	provider.mu.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() { _, err := m.Renew(ctx, session.ID); result <- err }()
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("refresh did not start")
+	}
+	// A navigation/WS drop must not discard an already-rotating refresh token.
+	cancel()
+	unblock()
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("rotation lost on disconnect: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("refresh did not complete")
+	}
+	renewed, ok := m.ByID(session.ID)
+	if !ok || !renewed.ExpiresAt.After(session.ExpiresAt) {
+		t.Fatal("completed rotation was not saved")
+	}
+	m.mu.Lock()
+	token := m.sessions[session.ID].token.RefreshToken
+	m.mu.Unlock()
+	if token != "refresh-rotated" {
+		t.Fatal("new refresh token was discarded")
+	}
+}
+
+func TestAlreadyCancelledRefreshDoesNotContactProvider(t *testing.T) {
+	m, session, provider := newRenewalLogin(t, 30)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := m.Renew(ctx, session.ID); !errors.Is(err, ErrRefreshUnavailable) {
+		t.Fatalf("cancelled refresh: %v", err)
+	}
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	if provider.calls != 0 {
+		t.Fatal("cancelled caller started a rotation")
+	}
+}

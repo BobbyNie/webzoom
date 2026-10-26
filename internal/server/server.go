@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 	"webzoom/internal/auth"
 	"webzoom/internal/bandwidth"
@@ -160,14 +161,15 @@ func (a *app) action(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
 	var v struct {
-		Action string `json:"action"`
-		Target string `json:"target"`
+		Action string  `json:"action"`
+		Target string  `json:"target"`
+		Epoch  *uint32 `json:"epoch"`
 	}
 	if d.Decode(&v) != nil || d.Decode(new(any)) != io.EOF {
 		http.Error(w, "invalid action", 400)
 		return
 	}
-	room, e := a.Hub.Action(r.PathValue("id"), s.User.ID, v.Action, v.Target)
+	room, e := a.Hub.ActionAtEpoch(r.PathValue("id"), s.User.ID, v.Action, v.Target, v.Epoch)
 	if e != nil {
 		fail(w, e)
 		return
@@ -184,15 +186,31 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		fail(w, e)
 		return
 	}
-	defer a.Hub.Leave(p)
+	var transient atomic.Bool
+	defer func() {
+		if transient.Load() {
+			a.Hub.Disconnect(p)
+		} else {
+			a.Hub.Leave(p)
+		}
+	}()
 	conn, e := websocket.Accept(w, r, &websocket.AcceptOptions{CompressionMode: websocket.CompressionDisabled})
 	if e != nil {
+		// Preserve the original recovery deadline: failed upgrades are not
+		// explicit exits, but they are not successful reconnects either.
+		a.Hub.AbortJoin(p)
 		return
 	}
 	defer conn.CloseNow()
 	conn.SetReadLimit(media.MaxFrameSize)
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
+	var flow *mediaWindow
+	if r.URL.Query().Get("mediaAck") == "1" {
+		flow = newMediaWindow()
+	}
+	// Keep an authenticated, connected meeting alive even if page timers stop.
+	go a.maintainMeetingSession(ctx, p)
 	readDone := make(chan struct{})
 	go func() {
 		defer close(readDone)
@@ -202,6 +220,10 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		for {
 			typ, data, e := conn.Read(ctx)
 			if e != nil {
+				status := websocket.CloseStatus(e)
+				if status == -1 || status == websocket.StatusGoingAway || status == websocket.StatusNormalClosure || status == websocket.StatusNoStatusRcvd {
+					transient.Store(true)
+				}
 				return
 			}
 			if _, ok := a.Auth.ByID(s.ID); !ok {
@@ -217,6 +239,26 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 			if len(data) > 16<<10 {
 				return
 			}
+			var msg struct {
+				Browser    *meeting.BrowserCommand    `json:"browser"`
+				Annotation *meeting.AnnotationCommand `json:"annotation"`
+				Type       string                     `json:"type"`
+				Level      int                        `json:"level"`
+				ClientTime int64                      `json:"clientTime"`
+				Sequence   uint64                     `json:"sequence"`
+				Epoch      *uint32                    `json:"epoch"`
+			}
+			if json.Unmarshal(data, &msg) != nil {
+				return
+			}
+			if msg.Type == "media-ack" && flow != nil {
+				if valid, stalled := flow.acknowledge(msg.Sequence); valid {
+					if stalled {
+						a.Hub.RequestKeyframe(p)
+					}
+					continue
+				}
+			}
 			if time.Since(window) >= time.Second {
 				window = time.Now()
 				controls = 0
@@ -225,20 +267,33 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 			if controls > 20 {
 				return
 			}
-			var msg struct {
-				Browser    *meeting.BrowserCommand    `json:"browser"`
-				Annotation *meeting.AnnotationCommand `json:"annotation"`
-				Type       string                     `json:"type"`
-				Level      int                        `json:"level"`
-				ClientTime int64                      `json:"clientTime"`
-			}
-			if json.Unmarshal(data, &msg) != nil {
-				return
-			}
 			if msg.Type != "browser" && len(data) > 4096 {
 				return
 			}
 			switch msg.Type {
+			case "media-ack":
+				// Duplicate/invalid credits never expand the send window.
+			case "leave":
+				a.Hub.Leave(p)
+				return
+			case "stop-sharing", "cancel-start":
+				action := "stop"
+				if msg.Type == "cancel-start" {
+					action = "cancel-start"
+				}
+				// Stale duplicate cleanup is harmless and must not disconnect
+				// a healthy transport or stop a replacement sharing epoch.
+				_ = a.Hub.SharingControl(p, action, msg.Epoch)
+				if msg.Epoch != nil {
+					payload, _ := json.Marshal(map[string]any{"type": "sharing-control", "action": msg.Type, "epoch": *msg.Epoch})
+					c, stop := context.WithTimeout(ctx, time.Second)
+					e = conn.Write(c, websocket.MessageText, payload)
+					stop()
+					if e != nil {
+						transient.Store(true)
+						return
+					}
+				}
 			case "browser":
 				if msg.Browser == nil || a.Hub.BrowserControl(p, *msg.Browser) != nil {
 					return
@@ -268,6 +323,7 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 				e = conn.Write(c, websocket.MessageText, payload)
 				stop()
 				if e != nil {
+					transient.Store(true)
 					return
 				}
 			default:
@@ -285,6 +341,7 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		c, stop := context.WithTimeout(ctx, time.Second)
 		defer stop()
 		if conn.Write(c, typ, b) != nil {
+			transient.Store(true)
 			return false
 		}
 		if typ == websocket.MessageBinary {
@@ -293,7 +350,17 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		return true
 	}
 	for {
+		mediaReady := p.Media.Notify
+		var creditReady <-chan struct{}
+		if flow != nil {
+			creditReady = flow.ready
+			if !flow.available() {
+				mediaReady = nil
+			}
+		}
 		select {
+		case <-creditReady:
+			continue
 		case <-p.Done:
 			conn.Close(websocket.StatusPolicyViolation, p.Reason)
 			return
@@ -318,6 +385,7 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 			e := conn.Ping(c)
 			stop()
 			if e != nil {
+				transient.Store(true)
 				return
 			}
 		case evt := <-p.Events:
@@ -325,8 +393,11 @@ func (a *app) socket(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 			if !write(websocket.MessageText, b) {
 				return
 			}
-		case <-p.Media.Notify:
+		case <-mediaReady:
 			if b, ok := p.Media.Pop(); ok {
+				if flow != nil {
+					flow.reserve()
+				}
 				if !write(websocket.MessageBinary, b) {
 					return
 				}

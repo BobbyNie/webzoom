@@ -56,7 +56,7 @@ test('annotations work in fullscreen; new share clears strokes without granting 
 test('a finished stroke does not block the next gesture while draw acknowledgements are delayed',async({browser})=>{
  const c1=await browser.newContext({ignoreHTTPSErrors:true}),c2=await browser.newContext({ignoreHTTPSErrors:true});
  const owner=await c1.newPage(),guest=await c2.newPage();let releaseAcknowledgements=()=>{};
- await guest.routeWebSocket(/\/api\/rooms\/[^/]+\/ws$/,socket=>{
+ await guest.routeWebSocket(/\/api\/rooms\/[^/]+\/ws(?:\?.*)?$/,socket=>{
   const server=socket.connectToServer();const pending:(string|Buffer)[]=[];let hold=true;
   server.onMessage(message=>{
    if(hold&&typeof message==='string'){
