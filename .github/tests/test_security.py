@@ -119,7 +119,7 @@ class SecurityTests(unittest.TestCase):
         lock = json.loads(path.read_text())
         self.assertEqual(lock['packages']['']['name'], 'npm')
         self.assertEqual(lock['packages']['']['version'], '12.2.0')
-        versions = {'brace-expansion': '5.0.12', 'http-cache-semantics': '4.3.0', 'ip-address': '10.7.4', 'postcss-selector-parser': '7.1.6', 'undici': '6.28.1'}
+        versions = {'brace-expansion': '5.0.12', 'http-cache-semantics': '4.3.0', 'ip-address': '10.7.4', 'postcss-selector-parser': '7.1.6', 'undici': '6.29.1'}
         for name, version in versions.items():
             packages = [p for path, p in lock['packages'].items() if path.endswith('/' + name)]
             self.assertTrue(packages, name + ' must be present in the build tool lock')
