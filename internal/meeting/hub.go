@@ -276,6 +276,9 @@ func (h *Hub) reset(r *room) {
 		p.browser.failed = false
 		p.browser.failure = ""
 		p.browser.blockedParents = nil
+		p.browser.recovering = false
+		p.browser.recoveryAttempts = 0
+		p.browser.retryAt = time.Time{}
 	}
 }
 func (h *Hub) Action(id, actor, action, target string) (Snapshot, error) {
@@ -379,6 +382,19 @@ func (h *Hub) actionAtEpoch(id, actor, action, target string, expected *uint32) 
 			}
 			delete(r.annotationRequests, actor)
 		}
+	case "annotation-revoke-all":
+		if actor != r.OwnerID {
+			return Snapshot{}, ErrForbidden
+		}
+		if target != "" {
+			return Snapshot{}, ErrConflict
+		}
+		for id := range r.annotators {
+			h.annotationBroadcast(r, AnnotationEvent{Kind: "pointer", Epoch: r.Epoch, Generation: r.annotations.generation, User: User{ID: id}})
+		}
+		clear(r.annotators)
+		clear(r.reconnectGrants)
+		clear(r.annotationRequests)
 	case "annotation-approve-all":
 		if actor != r.OwnerID {
 			return Snapshot{}, ErrForbidden

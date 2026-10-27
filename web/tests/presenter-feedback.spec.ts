@@ -96,6 +96,7 @@ test('native Document PiP shows remote strokes and named pointers, supports zoom
     await expect(pip.getByText('共享屏幕位置示意 · 不含业务画面')).toBeVisible();
     await expect(pip.getByTestId('feedback-strokes').locator('polyline')).toHaveCount(1);
     await owner.getByRole('button', {name: '清除全部', exact: true}).click();
+    await owner.getByRole('button', {name: '确认清除', exact: true}).click();
     await expect(pip.getByTestId('feedback-strokes').locator('polyline')).toHaveCount(0);
     await owner.getByRole('button', {name: '撤销 FeedbackGuest 批注', exact: true}).click();
     await expect(guest.getByRole('button', {name: '画笔', exact: true})).toHaveCount(0);

@@ -28,7 +28,12 @@ type browserHub struct {
 	last   time.Time
 }
 type browserPeer struct {
+	recoveryVerifiedAt             time.Time
+	recoveryVerifiedFrames         uint64
 	known, capable, failed, direct bool
+	recovering                     bool
+	recoveryAttempts               int
+	retryAt, recoveringAt          time.Time
 	role, reason, parent, failure  string
 	blockedParents                 map[string]bool
 	report                         *BrowserReport
@@ -55,14 +60,15 @@ type BrowserLink struct {
 	Offerer    bool   `json:"offerer"`
 }
 type BrowserPlan struct {
-	RoomID     string            `json:"roomId"`
-	Generation uint32            `json:"generation"`
-	Epoch      uint32            `json:"epoch"`
-	Active     bool              `json:"active"`
-	Role       string            `json:"role"`
-	Reason     string            `json:"reason"`
-	Links      []BrowserLink     `json:"links"`
-	PublicKey  map[string]string `json:"publicKey,omitempty"`
+	RoomID       string            `json:"roomId"`
+	Generation   uint32            `json:"generation"`
+	Epoch        uint32            `json:"epoch"`
+	Active       bool              `json:"active"`
+	Role         string            `json:"role"`
+	Reason       string            `json:"reason"`
+	Links        []BrowserLink     `json:"links"`
+	PublicKey    map[string]string `json:"publicKey,omitempty"`
+	ServerBackup bool              `json:"serverBackup,omitempty"`
 }
 type BrowserSignal struct {
 	Generation uint32 `json:"generation"`
@@ -150,7 +156,12 @@ func (h *Hub) browserReplan(r *room) {
 	plans := make(map[string]*BrowserPlan)
 	ids := make([]string, 0, len(r.peers))
 	for id, p := range r.peers {
-		p.browser.direct = false
+		if p.browser.recovering && (r.peers[p.browser.parent] == nil || p.browser.parent == r.PublisherID) {
+			p.browser.recovering = false
+			p.browser.failed = true
+			p.browser.retryAt = h.cfg.Now().Add(30 * time.Second)
+		}
+		p.browser.direct = p.browser.recovering
 		if r.BrowserRelayEnabled {
 			p.Media.Reset()
 		}
@@ -162,6 +173,11 @@ func (h *Hub) browserReplan(r *room) {
 	if r.BrowserRelayEnabled && r.Active {
 		sort.Strings(ids)
 		reserved := h.browserReservedExcept(r) + 1
+		for _, p := range r.peers {
+			if p.browser.recovering {
+				reserved++
+			}
+		}
 		roots := make(map[string]bool)
 		counts := make(map[string]int)
 		orderedRoots := []string{}
@@ -201,6 +217,24 @@ func (h *Hub) browserReplan(r *room) {
 			plans[parent].Links = append(plans[parent].Links, BrowserLink{ID: linkID, Peer: id, Offerer: true, Generation: link.generation})
 			return true
 		}
+		// New assignments prefer recently verified, foreground supply. Existing
+		// roots and edges stay in place regardless of ranking to avoid churn.
+		score := func(id string) int {
+			p := r.peers[id]
+			v := p.browser.report
+			if v == nil {
+				return 0
+			}
+			age := h.cfg.Now().Sub(p.browser.reportedAt).Milliseconds()
+			if age > 8000 || v.PlanFrames == 0 || v.MediaAgeMs+uint64(max(0, age)) >= 4000 {
+				return -1
+			}
+			if v.Visibility == "visible" {
+				return 2
+			}
+			return 1
+		}
+		sort.SliceStable(orderedRoots, func(i, j int) bool { return score(orderedRoots[i]) > score(orderedRoots[j]) })
 		// Keep existing healthy edges before filling spare slots. A late join must
 		// not reshuffle working receivers or renegotiate every data channel.
 		for _, id := range ids {
@@ -218,7 +252,14 @@ func (h *Hub) browserReplan(r *room) {
 				}
 			}
 			if plans[id].Role != "peer" {
-				addRoot(id)
+				if p := r.peers[id]; p.browser.recovering {
+					p.browser.recovering = false
+					p.browser.failed = true
+					p.browser.direct = false
+					reserved--
+				} else {
+					addRoot(id)
+				}
 			}
 		}
 		r.browser.roots = roots
@@ -234,6 +275,10 @@ func (h *Hub) browserReplan(r *room) {
 		for _, id := range ordered {
 			p, plan := r.peers[id], plans[id]
 			plan.PublicKey = h.browserPublicKey()
+			plan.ServerBackup = p.browser.recovering
+			if plan.ServerBackup {
+				plan.Reason = "服务器继续供画面，正在验证另一位同伴；验证成功后才切换"
+			}
 			if id == r.PublisherID {
 				plan.Role = "publisher"
 				plan.Reason = "共享画面上传服务器"
@@ -303,7 +348,10 @@ func (h *Hub) BrowserControl(p *Peer, c BrowserCommand) error {
 		if p.browser.role != "peer" || p.browser.failed {
 			return nil
 		}
+		wasRecovering := p.browser.recovering
 		p.browser.failure = browserFailureCode(c.Failure)
+		p.browser.recovering = false
+		p.browser.retryAt = h.cfg.Now().Add(30 * time.Second)
 		if p.browser.blockedParents == nil {
 			p.browser.blockedParents = make(map[string]bool)
 		}
@@ -311,7 +359,9 @@ func (h *Hub) BrowserControl(p *Peer, c BrowserCommand) error {
 		p.browser.failed = true
 		// At most three distinct failed parents per sharing epoch. Local setup or
 		// key failures cannot be fixed by probing other computers.
-		if len(p.browser.blockedParents) < 3 && p.browser.failure != "setup_failed" && p.browser.failure != "key_import_failed" {
+		// A failed make-before-break probe must keep its existing server supply.
+		// Other untried roots can only be probed after the recovery cooldown.
+		if !wasRecovering && len(p.browser.blockedParents) < 3 && p.browser.failure != "setup_failed" && p.browser.failure != "key_import_failed" {
 			for root := range r.browser.roots {
 				if p.browser.blockedParents[root] {
 					continue
@@ -441,4 +491,54 @@ func (h *Hub) browserSpend(now time.Time, cost int) bool {
 	}
 	b.tokens -= float64(cost)
 	return true
+}
+
+// Called only from a fresh authenticated report. Keep the existing direct
+// server reservation while probing a previously untried, healthy root.
+func (h *Hub) browserTryRecovery(r *room, p *Peer) {
+	b := &p.browser
+	if b.role != "direct" || !b.capable || !b.failed || b.recoveryAttempts >= 2 || len(b.blockedParents) >= 3 || h.cfg.Now().Before(b.retryAt) {
+		return
+	}
+	if b.failure == "setup_failed" || b.failure == "key_import_failed" || b.failure == "receive_limit" || b.failure == "invalid_fragment" {
+		return
+	}
+	v := b.report
+	if v == nil || v.Generation != r.browser.generation || v.PlanFrames == 0 || v.MediaAgeMs >= 4000 {
+		return
+	}
+	roots := make([]string, 0, len(r.browser.roots))
+	for id := range r.browser.roots {
+		roots = append(roots, id)
+	}
+	sort.Strings(roots)
+	for _, id := range roots {
+		root := r.peers[id]
+		if root == nil || b.blockedParents[id] {
+			continue
+		}
+		report := root.browser.report
+		age := h.cfg.Now().Sub(root.browser.reportedAt).Milliseconds()
+		if report == nil || report.Generation != r.browser.generation || age > 8000 || report.PlanFrames == 0 || report.MediaAgeMs+uint64(max(0, age)) >= 4000 {
+			continue
+		}
+		children := 0
+		for _, link := range r.browser.links {
+			if link.root == id {
+				children++
+			}
+		}
+		if children >= browserMaxFanout {
+			continue
+		}
+		b.recoveryVerifiedAt = time.Time{}
+		b.recoveryVerifiedFrames = 0
+		b.recoveryAttempts++
+		b.recovering = true
+		b.recoveringAt = h.cfg.Now()
+		b.failed = false
+		b.parent = id
+		h.browserReplan(r)
+		return
+	}
 }

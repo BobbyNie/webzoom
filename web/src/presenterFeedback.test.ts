@@ -24,4 +24,15 @@ describe('presenter feedback geometry and expiry', () => {
     expect(latestFeedback(state, 1500)).toEqual({point: {x: .3, y: .4}, name: 'B'});
     expect(latestFeedback(state, 4000)).toEqual({point: {x: .8, y: .9}, name: 'Artist'});
   });
+  it('expires server-timed temporary ink without changing the local pointer clock', () => {
+    const ink = {id:'temp', user:{id:'a',name:'Artist'},color:'#e53935',tool:'temporary' as const,expiresAt:62000,segment:0,points:[{x:.8,y:.9}]};
+    const state = {...emptyAnnotations(),strokes:[ink],pointers:{a:{user:ink.user,color:ink.color,point:{x:.1,y:.2},updatedAt:1000}}};
+    // Local time is one minute behind the server. Pointer timestamps are local.
+    expect(latestFeedback(state,1500,61500)?.name).toBe('Artist');
+    expect(latestFeedback(state,1500,63000)).toEqual({point:{x:.1,y:.2},name:'Artist'});
+    expect(latestFeedback(state,3000,63000)).toBeNull();
+    expect(latestFeedback({...state,pointers:{}},1500,61500)).toEqual({point:{x:.8,y:.9},name:'Artist'});
+    expect(latestFeedback({...state,pointers:{}},1500,62000)).toBeNull();
+  });
+
 });

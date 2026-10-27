@@ -193,6 +193,8 @@ go build -o bin/loadtest ./cmd/loadtest
 
 ## 文档
 
+- `docs/BACKGROUND_LOCK_RECOVERY.md`：锁屏/后台恢复后的误重连与成员变化闪黑修复、测试范围和未验证边界。
+
 - `docs/DEPLOYMENT.md`：Keycloak、证书、Docker、OpenShift 和监控。
 - `docs/PROTOCOL.md`：接口、状态机和媒体封包。
 - `docs/CAPACITY.md`：负载工具和生产容量验收。
@@ -200,6 +202,7 @@ go build -o bin/loadtest ./cmd/loadtest
 - `docs/SECURITY.md`：CVE 检查、修复、剩余风险和扫描命令。
 - `docs/CI.md`：发布凭据、自动版本、漏洞门槛和镜像摘要。
 - `docs/PRESENTER_FEEDBACK.md`：基于领导 main 的纯网页置顶反馈小窗、测试版本命名和部署边界。
+- `docs/ANNOTATION_TOOLS.md`：新版网页批注工具、撤销/擦除、观看缩放与默认关闭的截图导出（`ANNOTATION_EXPORT_ENABLED=true` 显式启用）。
 - `docs/ANNOTATIONS.md`：主持人授权的共享画面画笔、署名指示和验收边界。
 - `docs/ANNOTATION_UAT.md`：副分支测试镜像交付、OCP UAT 验收和回退。
 - `THIRD_PARTY_NOTICES.md`：依赖、许可证和检查边界。
@@ -222,3 +225,5 @@ go build -o bin/loadtest ./cmd/loadtest
 
 轮询新增的会议不会自动加入选择。单次请求最多包含 100 场会议，页面会自动分批。
 此请求保护不限制服务的会议总数或参与人数。普通用户仍只能结束自己创建的会议。
+
+- [网页分流状态、诊断与保守恢复（2026-10-27）](docs/RELAY_RELIABILITY_20261027.md)

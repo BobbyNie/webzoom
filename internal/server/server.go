@@ -21,6 +21,7 @@ import (
 )
 
 type Config struct {
+	AnnotationExportEnabled bool
 	Auth                    *auth.Manager
 	Hub                     *meeting.Hub
 	StaticDir, MetricsToken string
@@ -69,6 +70,9 @@ func New(c Config) http.Handler {
 	}))
 	mux.HandleFunc("POST /api/admin/rooms/end", a.administrator(a.endRooms))
 	mux.HandleFunc("POST /api/admin/bandwidth", a.administrator(a.setBandwidth))
+	mux.HandleFunc("GET /api/annotation-policy", a.secure(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
+		reply(w, 200, map[string]bool{"exportEnabled": a.AnnotationExportEnabled})
+	}))
 	mux.HandleFunc("GET /api/me", a.secure(func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
 		reply(w, 200, map[string]any{"user": s.User, "csrf": s.CSRF, "expiresAt": s.ExpiresAt})
 	}))

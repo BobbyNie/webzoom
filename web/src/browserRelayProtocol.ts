@@ -1,7 +1,7 @@
 import {MAX_FRAME,unpack,isStale} from './protocol';
 export const ENVELOPE_HEADER=104,MAX_ENVELOPE=MAX_FRAME+ENVELOPE_HEADER,CHUNK_HEADER=16,MAX_MESSAGE=16*1024;
 export interface BrowserLink {id:string;peer:string;offerer:boolean;generation?:number}
-export interface BrowserPlan {roomId:string;generation:number;epoch:number;active:boolean;role:'off'|'publisher'|'root'|'peer'|'direct'|'waiting';reason:string;links:BrowserLink[];publicKey?:JsonWebKey}
+export interface BrowserPlan {roomId:string;generation:number;epoch:number;active:boolean;role:'off'|'publisher'|'root'|'peer'|'direct'|'waiting';reason:string;links:BrowserLink[];publicKey?:JsonWebKey;serverBackup?:boolean}
 export interface BrowserSignal {generation:number;link:string;type:'offer'|'answer';sdp:string}
 export function fragment(buffer:ArrayBuffer,maxMessage=MAX_MESSAGE):ArrayBuffer[]{
  if(buffer.byteLength<ENVELOPE_HEADER+32||buffer.byteLength>MAX_ENVELOPE)throw Error('frame size');
@@ -38,6 +38,8 @@ export async function verifyEnvelope(buffer:ArrayBuffer,plan:BrowserPlan,key:Cry
  if(!await crypto.subtle.verify({name:'ECDSA',hash:'SHA-256'},key,buffer.slice(40,104),signed))throw Error('frame signature');
  return raw;
 }
-export interface BrowserReport {generation:number;centerBytes:number;peerBytes:number;sentBytes:number;verifiedFrames:number;rejected:number;planFrames:number;mediaAgeMs:number;visibility?:'visible'|'hidden'|'unknown'}
-export interface BrowserParticipant {user:{id:string;name:string};role:BrowserPlan['role'];reason:string;parent:string;children:number;report?:BrowserReport;reportedAt:number;rates?:{centerBps:number;peerBps:number;sentBps:number;sampleMs:number}}
+export interface RelayBytes {centerBytes:number;peerBytes:number;sentBytes:number}
+export interface RelayLinkDiagnostic {connection:string;ice:string;channel:string;rttMs?:number;bufferedBytes:number}
+export interface BrowserReport {sharing?:RelayBytes;peerPlanFrames?:number;peerMediaAgeMs?:number;generation:number;centerBytes:number;peerBytes:number;sentBytes:number;verifiedFrames:number;rejected:number;planFrames:number;mediaAgeMs:number;visibility?:'visible'|'hidden'|'unknown'}
+export interface BrowserParticipant {user:{id:string;name:string};role:BrowserPlan['role'];reason:string;parent:string;children:number;failure?:string;serverBackup?:boolean;report?:BrowserReport;reportedAt:number;rates?:{centerBps:number;peerBps:number;sentBps:number;sampleMs:number}}
 export interface BrowserOverview {generation:number;active:boolean;generatedAt:number;maxViewers:number;maxFanout:number;participants:BrowserParticipant[];receivedAt?:number}

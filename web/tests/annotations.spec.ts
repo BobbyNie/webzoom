@@ -29,9 +29,9 @@ test('owner grants annotation; strokes, identity pointer, late join and clear sy
   await expect(owner.getByTestId('annotation-pointer')).toContainText('AnnotationGuest');await owner.screenshot({path:'test-results/annotations-pointer.png',fullPage:true});
   await login(late,'AnnotationLate');await late.goto(link);await expect(strokes(late)).toHaveCount(2);
   await draw(owner);await expect(strokes(late)).toHaveCount(3);
-  await guest.getByRole('button',{name:'清除我的',exact:true}).click();await expect(strokes(owner)).toHaveCount(1);await expect(strokes(late)).toHaveCount(1);
+  await guest.getByRole('button',{name:'清除我的',exact:true}).click();await guest.getByRole('button',{name:'确认清除',exact:true}).click();await expect(strokes(owner)).toHaveCount(1);await expect(strokes(late)).toHaveCount(1);
   await owner.screenshot({path:'test-results/annotations-owner.png',fullPage:true});
-  await owner.getByRole('button',{name:'清除全部',exact:true}).click();await expect(strokes(guest)).toHaveCount(0);await expect(strokes(late)).toHaveCount(0);
+  await owner.getByRole('button',{name:'清除全部',exact:true}).click();await owner.getByRole('button',{name:'确认清除',exact:true}).click();await expect(strokes(guest)).toHaveCount(0);await expect(strokes(late)).toHaveCount(0);
   await owner.getByRole('button',{name:'撤销 AnnotationGuest 批注',exact:true}).click();await expect(guest.getByRole('button',{name:'画笔',exact:true})).toHaveCount(0);
   await expect(errors).toEqual([]);
  }catch(error){console.log('ANNOTATION TRACE',traffic.slice(-25));console.log('PAGE ERRORS',errors);await guest.screenshot({path:'test-results/annotations-debug-guest.png',fullPage:true});throw error}finally{for(const c of contexts)await c.close()}
@@ -79,7 +79,7 @@ test('a finished stroke does not block the next gesture while draw acknowledgeme
   // Hold all echoes: accepted gestures remain bounded instead of silently dropping or growing forever.
   for(let i=0;i<6;i++)await draw(guest);
   await expect(strokes(owner)).toHaveCount(8);await draw(guest);
-  await expect(guest.locator('.annotation-layer').getByRole('status')).toHaveText('网络确认较慢，请稍候再绘制。');
+  await expect(guest.locator('.annotation-hint')).toHaveText('网络确认较慢，请稍候再绘制。×');
   await expect(guest.getByTestId('annotation-pending').locator('polyline,circle')).toHaveCount(8);
   releaseAcknowledgements();await expect(strokes(guest)).toHaveCount(8);
   await expect(guest.getByTestId('annotation-pending').locator('polyline,circle')).toHaveCount(0);

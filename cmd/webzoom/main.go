@@ -134,7 +134,7 @@ func main() {
 		os.Exit(1)
 	}
 	hub := meeting.New(meeting.Config{BrowserRelayMaxViewers: relayViewers, BrowserRelayEnabled: env("BROWSER_RELAY_ENABLED", "false") == "true", MaxRooms: maxRooms, MaxViewers: maxViewers, BandwidthLimitMbps: limit, SaveBandwidthLimit: store.Save})
-	handler := server.New(server.Config{Auth: manager, Hub: hub, StaticDir: env("STATIC_DIR", "web/dist"), MetricsToken: metricsToken, AdminUserIDs: os.Getenv("ADMIN_USER_IDS")})
+	handler := server.New(server.Config{AnnotationExportEnabled: env("ANNOTATION_EXPORT_ENABLED", "false") == "true", Auth: manager, Hub: hub, StaticDir: env("STATIC_DIR", "web/dist"), MetricsToken: metricsToken, AdminUserIDs: os.Getenv("ADMIN_USER_IDS")})
 	srv := &http.Server{Addr: env("LISTEN_ADDR", ":8080"), Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	go func() {
 		timer := time.NewTicker(time.Minute)

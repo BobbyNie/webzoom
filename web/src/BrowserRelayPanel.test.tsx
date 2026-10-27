@@ -3,7 +3,7 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import BrowserRelayPanel,{reception} from './BrowserRelayPanel';
 import {emptyRelayStatus} from './browserRelay';
 import type {BrowserOverview,BrowserParticipant} from './browserRelayProtocol';
-const row:BrowserParticipant={user:{id:'leaf',name:'同事甲'},role:'peer',reason:'同伴供流',parent:'root',children:0,reportedAt:10000,report:{generation:2,peerBytes:1048576,centerBytes:0,sentBytes:0,verifiedFrames:10,planFrames:5,mediaAgeMs:0,rejected:0}};
+const row:BrowserParticipant={user:{id:'leaf',name:'同事甲'},role:'peer',reason:'同伴供流',parent:'root',children:0,reportedAt:10000,report:{sharing:{centerBytes:0,peerBytes:1048576,sentBytes:0},generation:2,peerBytes:1048576,centerBytes:0,sentBytes:0,verifiedFrames:10,planFrames:5,mediaAgeMs:0,rejected:0}};
 const overview:BrowserOverview={generation:2,active:true,generatedAt:10000,receivedAt:20000,maxViewers:32,maxFanout:3,participants:[row]};
 describe('relay reception dashboard',()=>{
  it('does not claim success from historic bytes, missing reports, stale reports or stalled media',()=>{
@@ -45,3 +45,15 @@ describe('background and rate reporting',()=>{
   expect(renderToStaticMarkup(<BrowserRelayPanel {...props} maxViewers={16}/>)).toContain('16 位观众');
  });
 });
+
+ it('reports healthy direct reception without claiming peer offload or a viewing failure',()=>{
+  const direct={...row,role:'direct' as const};
+  expect(reception(direct,overview,20000)).toMatchObject({label:'画面接收正常 · 服务器直连',tone:'success',receiving:true});
+  expect(reception({...row,serverBackup:true},overview,20000).label).toContain('正在验证同伴');
+  expect(reception({...direct,report:{...row.report!,mediaAgeMs:5000}},overview,20000).receiving).toBe(false);
+ });
+ it('does not substitute lifetime counters when sharing counters are unavailable',()=>{
+  const data={...overview,receivedAt:Date.now(),participants:[{...row,report:{...row.report!,sharing:undefined}}]};
+  const html=renderToStaticMarkup(<BrowserRelayPanel status={emptyRelayStatus()} overview={data} enabled owner disabled={false} toggle={()=>{}}/>);
+  expect(html).not.toContain('1.00 MB');expect(html).toContain('不会拿历史流量代替');expect(html).not.toContain('故障回退');
+ });

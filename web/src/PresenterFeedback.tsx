@@ -1,16 +1,18 @@
+import StrokeGraphic from './StrokeGraphic';
+import {visibleStrokes} from './annotations';
 import {useEffect, useRef, useState} from 'react';
 import {createPortal} from 'react-dom';
 import {videoRect, type AnnotationState} from './annotations';
 import {currentPointers, focusCenter, latestFeedback, type FeedbackMode} from './feedbackGeometry';
 import './presenter-feedback.css';
 
-type Props = {stream: MediaStream; state: AnnotationState; onStop: () => void};
+type Props = {stream: MediaStream; state: AnnotationState; onStop: () => void; clockOffset?:number};
 type PiP = {window: Window | null; requestWindow: (options?: {width?: number; height?: number}) => Promise<Window>};
 function pictureInPicture(): PiP | undefined {
   return (window as Window & {documentPictureInPicture?: PiP}).documentPictureInPicture;
 }
 
-export default function PresenterFeedback({stream, state, onStop}: Props) {
+export default function PresenterFeedback({stream, state, onStop,clockOffset=0}: Props) {
   const [popup, setPopup] = useState<Window | null>(null);
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState('');
@@ -79,11 +81,12 @@ export default function PresenterFeedback({stream, state, onStop}: Props) {
     {captureRisk && <p className="feedback-warning">整屏共享可能把小窗也拍进去。建议把小窗移到未共享的第二块屏幕，或改为共享业务窗口 / 标签页；若出现重复画面，切换小窗的“仅标注”。网页不能保证自动排除小窗。</p>}
     <small>反馈显示在小窗内，不会直接覆盖原应用。关闭小窗不会停止共享；停止共享、离开会议或连接中断会关闭小窗。换页、滚动后请清除旧笔迹。</small>
     {error && <p role="alert" className="feedback-warning">{error}</p>}
-    {popup && !popup.closed && createPortal(<FeedbackWindow popup={popup} stream={stream} state={state} captureRisk={captureRisk} onStop={onStop}/>, popup.document.body)}
+    {popup && !popup.closed && createPortal(<FeedbackWindow clockOffset={clockOffset} popup={popup} stream={stream} state={state} captureRisk={captureRisk} onStop={onStop}/>, popup.document.body)}
   </section>;
 }
 
-function FeedbackWindow({popup, stream, state, captureRisk, onStop}: Props & {popup: Window; captureRisk: boolean}) {
+function FeedbackWindow({popup, stream, state, captureRisk, onStop,clockOffset=0}: Props & {popup: Window; captureRisk: boolean}) {
+  const [hideAnnotations,setHideAnnotations]=useState(false),[showNames,setShowNames]=useState(true);
   const [mode, setMode] = useState<FeedbackMode>('overview');
   const [now, setNow] = useState(Date.now());
   const [videoError, setVideoError] = useState(false);
@@ -94,8 +97,8 @@ function FeedbackWindow({popup, stream, state, captureRisk, onStop}: Props & {po
   const [box, setBox] = useState({width: 0, height: 0});
   const stage = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
-  const focus = useRef(latestFeedback(state, Date.now())?.point ?? {x: .5, y: .5});
-  const feedback = latestFeedback(state, now);
+  const focus = useRef(latestFeedback(state, Date.now(),Date.now()+clockOffset)?.point ?? {x: .5, y: .5});
+  const feedback = latestFeedback(state, now,now+clockOffset);
   const pointers = currentPointers(state, now);
   // Retain the last point after a laser expires; do not jump to an old stroke.
   const lastState = useRef(state);
@@ -153,6 +156,8 @@ function FeedbackWindow({popup, stream, state, captureRisk, onStop}: Props & {po
       <button aria-pressed={mode === 'overview'} onClick={() => setMode('overview')}>完整画面</button>
       <button aria-pressed={mode === 'focus'} onClick={() => setMode('focus')}>跟随指示 ×2</button>
       <button aria-pressed={mode === 'annotations'} onClick={() => setMode('annotations')}>仅标注</button>
+      <button aria-pressed={hideAnnotations} onClick={()=>setHideAnnotations(v=>!v)}>{hideAnnotations?'显示批注':'隐藏批注'}</button>
+      <button aria-pressed={showNames} onClick={()=>setShowNames(v=>!v)}>显示姓名</button>
     </nav>
     {captureRisk && <p className="feedback-capture-warning">整屏可能拍入此窗：移到未共享屏幕，或切换“仅标注”避免画面套娃。</p>}
     <div className={`feedback-stage ${mode === 'annotations' ? 'annotations-only' : ''}`} ref={stage} data-testid="feedback-stage">
@@ -160,13 +165,10 @@ function FeedbackWindow({popup, stream, state, captureRisk, onStop}: Props & {po
         {mode !== 'annotations' && <video ref={video} muted autoPlay playsInline aria-label="本机共享画面" data-testid="feedback-video"/>}
         {mode === 'annotations' && <span className="feedback-map-label">共享屏幕位置示意 · 不含业务画面</span>}
         <svg viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="同事的画笔" data-testid="feedback-strokes">
-          {state.strokes.map(stroke => stroke.points.length === 1 ?
-            <circle key={`${stroke.user.id}:${stroke.id}`} cx={stroke.points[0].x * 1000} cy={stroke.points[0].y * 1000} r="2" fill={stroke.color}/> :
-            <polyline key={`${stroke.user.id}:${stroke.id}`} points={stroke.points.map(p => `${p.x * 1000},${p.y * 1000}`).join(' ')} stroke={stroke.color} strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
-          )}
+          {!hideAnnotations&&visibleStrokes(state,now+clockOffset).map(stroke=><StrokeGraphic key={`${stroke.user.id}:${stroke.id}`} stroke={stroke} width={content.width} height={content.height}/>)}
         </svg>
-        {pointers.map(pointer => <span key={pointer.user.id} className={`feedback-pointer ${pointer.point.x > .65 ? 'label-left' : ''}`} style={{left: `${pointer.point.x * 100}%`, top: `${pointer.point.y * 100}%`, color: pointer.color}} data-testid="feedback-pointer">
-          <span className="feedback-laser"/><span className="feedback-pointer-name">{pointer.user.name}</span>
+        {!hideAnnotations&&pointers.map(pointer => <span key={pointer.user.id} className={`feedback-pointer ${pointer.point.x > .65 ? 'label-left' : ''}`} style={{left: `${pointer.point.x * 100}%`, top: `${pointer.point.y * 100}%`, color: pointer.color}} data-testid="feedback-pointer">
+          <span className="feedback-laser"/>{showNames&&<span className="feedback-pointer-name">{pointer.user.name}</span>}
         </span>)}
       </div>
       {videoError && mode !== 'annotations' && <p className="feedback-video-error" role="alert">画面预览未能播放，请关闭后重开小窗；标注仍可查看。</p>}

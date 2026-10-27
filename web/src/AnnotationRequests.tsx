@@ -26,7 +26,8 @@ export default function AnnotationRequests({room, userId, disabled, onAction}: P
   }, [requested, allowed]);
 
   if (owner) return <section className="annotation-requests" aria-label="批注申请">
-    <h3>批注申请 <span>{pending.length}</span></h3>
+    <h3>批注申请 <span aria-live="polite">{pending.length}</span></h3>
+    {<button className="button secondary" disabled={disabled} onClick={()=>{if(window.confirm('收回所有观众的批注权限？短暂断线的旧权限也不会恢复。'))void onAction('annotation-revoke-all')}}>收回所有批注权限</button>}
     {pending.length ? <>
       <button className="button secondary" disabled={disabled} onClick={() => void onAction('annotation-approve-all')}>一键同意全部（{pending.length}）</button>
       <p className="annotation-request-note">仅同意当前申请的人，不会授权其他观众。</p>
@@ -40,7 +41,7 @@ export default function AnnotationRequests({room, userId, disabled, onAction}: P
 
   return <section className="annotation-requests" aria-label="我的批注权限">
     <h3>批注权限</h3>
-    <p className="annotation-request-note" role="status">{allowed ? '你已获得批注权限，共享开始后可使用画笔或指示光标。' : requested ? '已申请，等待主持人同意。' : message || '需要画画或指示时，可以向主持人申请批注权限。'}</p>
+    <p className={`annotation-request-note ${allowed?'annotation-grant-notice':''}`} role="status">{allowed ? '你已获得批注权限，共享开始后可使用画笔或指示光标。' : requested ? '已申请，等待主持人同意。' : message || '需要画画或指示时，可以向主持人申请批注权限。'}</p>
     {!allowed && <button className="button secondary" disabled={disabled} onClick={() => void onAction(requested ? 'annotation-cancel' : 'annotation-request')}>{requested ? '取消申请' : '申请批注'}</button>}
   </section>;
 }

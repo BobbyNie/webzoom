@@ -1,9 +1,10 @@
-import {test,expect} from '@playwright/test';
+import {test,expect,type Page} from '@playwright/test';
 import {arch,cpus,freemem,platform,totalmem} from 'node:os';
-import {finish,openRoom,progress,start} from '../relay-tests/relayHarness';
+import {finish,openRoom,progress,start,snapshot} from '../relay-tests/relayHarness';
 import {assertTopology,boundedSeconds,sampler,summary,type Sample} from './measure';
 const counts=(process.env.RELAY_CAPACITY_VIEWERS??'16,32,64').split(',').map(Number);
 if(!counts.length||new Set(counts).size!==counts.length||counts.some(n=>![16,32,64].includes(n)))throw Error('RELAY_CAPACITY_VIEWERS accepts unique stages from 16,32,64 only');
+const fallbacks=boundedSeconds('RELAY_CAPACITY_FALLBACKS',0,0,8);
 const seconds=boundedSeconds('RELAY_CAPACITY_SECONDS',30,10,300);
 for(const count of counts)test(`${count} viewer local Chromium capacity sample`,async({browser},info)=>{
  test.setTimeout(180000+count*5000+seconds*1000);
@@ -18,6 +19,18 @@ for(const count of counts)test(`${count} viewer local Chromium capacity sample`,
    const next=await sample.take(),previous=samples.at(-1)!;samples.push(next);assertTopology(next,count);
    expect(next.viewers.slice(1).every((v,i)=>v.frames>previous.viewers[i+1].frames)).toBe(true);
    expect(next.viewers.slice(1).every((v,i)=>v.connections===samples[0].viewers[i+1].connections)).toBe(true);
+  }
+  if(fallbacks){
+   const candidates:Page[]=[];
+   for(const page of room.pages.slice(1))if((await snapshot(page)).role==='peer'&&candidates.length<fallbacks)candidates.push(page);
+   expect(candidates).toHaveLength(fallbacks);
+   const before=await sample.take();
+   await Promise.all(candidates.map(page=>page.evaluate(()=>{const active=window.relayObservation!.connections.find(c=>c.connectionState==='connected')!;window.RTCPeerConnection=class extends window.RTCPeerConnection{constructor(c?:RTCConfiguration){super(c);this.close();throw Error('test-only peer setup blocked')}};active.close()})));
+   await expect.poll(async()=>Promise.all(candidates.map(snapshot)).then(rows=>rows.every(r=>r.role==='direct')),{timeout:30000}).toBe(true);
+   await progress(room.pages.slice(1),60000);const after=await sample.take();
+   expect(after.viewers.slice(1).every((v,i)=>v.frames>before.viewers[i+1].frames&&v.openSockets===1)).toBe(true);
+   for(const page of candidates)expect((await snapshot(page)).centerBytes).toBeGreaterThan(0);
+   await info.attach('capacity-fallback-report',{body:JSON.stringify({scope:'Explicit local RTC close and replacement-RTC setup failure on selected leaf viewers; actual server fallback, not corporate outage simulation',fallbacks,before,after},null,2),contentType:'application/json'});
   }
   expect(room.errors).toEqual([]);await finish(room.pages[0]);
  }finally{
