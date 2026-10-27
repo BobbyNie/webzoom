@@ -199,7 +199,7 @@ test('a publisher disconnect leaves a persistent stop reason after reconnect and
   expect(starts).toBe(1);
   await page.getByRole('button',{name:'全屏观看',exact:true}).click();
   await expect(warning).toBeVisible();
-  expect(await warning.evaluate(element=>document.fullscreenElement?.contains(element))).toBe(true);
+  await expect.poll(()=>warning.evaluate(element=>document.fullscreenElement?.contains(element)??false)).toBe(true);
   await page.getByRole('button',{name:'退出全屏',exact:true}).click();
   await page.getByRole('button',{name:'共享屏幕',exact:true}).click();
   await expect(page.getByRole('button',{name:'停止共享',exact:true})).toBeVisible();
@@ -213,12 +213,13 @@ test('a browser capture-ended event has a visible reason even inside native full
   await page.getByRole('button',{name:'共享屏幕',exact:true}).click();
   await expect(page.getByRole('button',{name:'停止共享',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'全屏观看',exact:true}).click();
+  await expect(page.getByRole('button',{name:'退出全屏',exact:true})).toBeVisible();
   // Canvas capture has no OS stop-sharing UI; simulate its native ended event explicitly.
   await page.evaluate(()=>{const track=(window as any).raceStream.getVideoTracks()[0];track.stop();track.dispatchEvent(new Event('ended'))});
   const warning=page.getByTestId('share-interruption');
   await expect(warning).toContainText('浏览器已结束屏幕采集');
   await expect(warning).toBeVisible();
-  expect(await warning.evaluate(element=>document.fullscreenElement?.contains(element))).toBe(true);
+  await expect.poll(()=>warning.evaluate(element=>document.fullscreenElement?.contains(element)??false)).toBe(true);
   await expect(page.getByRole('button',{name:'共享屏幕',exact:true})).toBeEnabled();
   await expect.poll(async()=>(await (await page.request.get(`/api/rooms/${roomID}`)).json()).active).toBe(false);
   expect(await page.evaluate(()=>(window as any).raceSockets.length)).toBe(1);
