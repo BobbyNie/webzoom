@@ -50,7 +50,7 @@ test('delayed background clocks revalidate the existing WSS instead of repeatedl
   const after=await snapshot(leaf);expect(clocks.probes).toBeGreaterThanOrEqual(2);expect(clocks.normal).toBeGreaterThan(3);
   expect(await exits(owner)).toBe(0);expect(await clears(root)).toBe(0);expect(after.openSockets).toBe(1);
   expect(await leaf.evaluate(()=>window.relayObservation!.sockets.length)).toBe(1);expect(after.connections).toBe(before.connections);
-  await expect(leaf.getByRole('button',{name:'画笔',exact:true})).toBeVisible();
+  await leaf.getByRole('button',{name:'展开工具栏',exact:true}).click();await expect(leaf.getByRole('button',{name:'画笔',exact:true})).toBeVisible();
   await info.attach('background-clock-proof',{body:JSON.stringify({scope:'Synthetic screen, real WSS/RTC; ordinary clock replies intentionally delayed, fresh probe replies delivered',before,after,clocks},null,2),contentType:'application/json'});
   expect(room.errors).toEqual([]);await finish(owner);
  }finally{await room.close()}

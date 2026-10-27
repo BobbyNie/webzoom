@@ -1,10 +1,11 @@
+import {openAnnotations,annotationPanel} from './annotationDock';
 import {test,expect,type Page} from '@playwright/test';
 async function login(page:Page,name:string){await page.goto('/');await page.getByRole('link',{name:'使用公司账号登录'}).click();await page.getByLabel('用户名').fill(name);await page.getByRole('button',{name:'登录',exact:true}).click();await expect(page.getByRole('button',{name:'创建会议',exact:true})).toBeVisible()}
 async function fakeScreen(page:Page){await page.addInitScript(()=>{
  navigator.mediaDevices.getDisplayMedia=async()=>{const canvas=document.createElement('canvas');canvas.width=1920;canvas.height=1080;const ctx=canvas.getContext('2d')!;let n=0;function draw(){ctx.fillStyle='#164866';ctx.fillRect(0,0,1920,1080);ctx.fillStyle='#fff';ctx.font='60px sans-serif';ctx.fillText('Annotation meeting '+n++,120,180);requestAnimationFrame(draw)}draw();return canvas.captureStream(30)};
 })}
 async function draw(page:Page){
- await page.getByRole('button',{name:'画笔',exact:true}).click();
+ await openAnnotations(page);await page.getByRole('button',{name:'画笔',exact:true}).click();
  const surface=page.getByTestId('annotation-surface');const box=await surface.boundingBox();if(!box||box.width<1)throw new Error('missing video rectangle');
  await page.mouse.move(box.x+box.width*.25,box.y+box.height*.35);await page.mouse.down();
  await page.mouse.move(box.x+box.width*.5,box.y+box.height*.45,{steps:12});await page.mouse.up();
@@ -29,9 +30,9 @@ test('owner grants annotation; strokes, identity pointer, late join and clear sy
   await expect(owner.getByTestId('annotation-pointer')).toContainText('AnnotationGuest');await owner.screenshot({path:'test-results/annotations-pointer.png',fullPage:true});
   await login(late,'AnnotationLate');await late.goto(link);await expect(strokes(late)).toHaveCount(2);
   await draw(owner);await expect(strokes(late)).toHaveCount(3);
-  await guest.getByRole('button',{name:'清除我的',exact:true}).click();await guest.getByRole('button',{name:'确认清除',exact:true}).click();await expect(strokes(owner)).toHaveCount(1);await expect(strokes(late)).toHaveCount(1);
+  await annotationPanel(guest,'更多批注操作');await guest.getByRole('button',{name:'清除我的',exact:true}).click();await guest.getByRole('button',{name:'确认清除',exact:true}).click();await expect(strokes(owner)).toHaveCount(1);await expect(strokes(late)).toHaveCount(1);
   await owner.screenshot({path:'test-results/annotations-owner.png',fullPage:true});
-  await owner.getByRole('button',{name:'清除全部',exact:true}).click();await owner.getByRole('button',{name:'确认清除',exact:true}).click();await expect(strokes(guest)).toHaveCount(0);await expect(strokes(late)).toHaveCount(0);
+  await annotationPanel(owner,'更多批注操作');await owner.getByRole('button',{name:'清除全部',exact:true}).click();await owner.getByRole('button',{name:'确认清除',exact:true}).click();await expect(strokes(guest)).toHaveCount(0);await expect(strokes(late)).toHaveCount(0);
   await owner.getByRole('button',{name:'撤销 AnnotationGuest 批注',exact:true}).click();await expect(guest.getByRole('button',{name:'画笔',exact:true})).toHaveCount(0);
   await expect(errors).toEqual([]);
  }catch(error){console.log('ANNOTATION TRACE',traffic.slice(-25));console.log('PAGE ERRORS',errors);await guest.screenshot({path:'test-results/annotations-debug-guest.png',fullPage:true});throw error}finally{for(const c of contexts)await c.close()}

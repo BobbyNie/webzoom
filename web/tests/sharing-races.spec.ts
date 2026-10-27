@@ -177,3 +177,88 @@ test('retry stays locked until an abandoned start has a server cancellation ackn
   await expect.poll(async()=>(await(await page.request.get(`/api/rooms/${roomID}`)).json()).active).toBe(false);
   expect(await page.evaluate(()=>(window as any).raceSockets.length)).toBe(1);
 });
+
+
+test('a publisher disconnect leaves a persistent stop reason after reconnect and requires an explicit restart', async ({page}) => {
+  const roomID=await create(page,'PublisherDisconnectNotice');
+  let starts=0;
+  page.on('request',request=>{if(request.url().endsWith('/actions')&&request.postDataJSON()?.action==='start')starts++});
+  await page.getByRole('button',{name:'共享屏幕',exact:true}).click();
+  await expect(page.getByRole('button',{name:'停止共享',exact:true})).toBeVisible();
+  await expect.poll(async()=>Number(await page.getByTestId('frames').textContent())).toBeGreaterThan(0);
+  await page.evaluate(()=>(window as any).raceSockets.at(-1).close());
+  const warning=page.getByTestId('share-interruption');
+  await expect(warning).toContainText('共享连接已断开');
+  await expect(warning).toContainText('发生于');
+  await expect.poll(()=>page.evaluate(()=>(window as any).raceSockets.length)).toBe(2);
+  await expect(page.getByText('已连接',{exact:true})).toBeVisible();
+  await expect(warning).toBeVisible();
+  await expect(page.getByTestId('share-state')).toHaveText('共享已停止');
+  await expect.poll(()=>page.evaluate(()=>(window as any).raceStream.getVideoTracks()[0].readyState)).toBe('ended');
+  expect((await (await page.request.get(`/api/rooms/${roomID}`)).json()).active).toBe(false);
+  expect(starts).toBe(1);
+  await page.getByRole('button',{name:'全屏观看',exact:true}).click();
+  await expect(warning).toBeVisible();
+  expect(await warning.evaluate(element=>document.fullscreenElement?.contains(element))).toBe(true);
+  await page.getByRole('button',{name:'退出全屏',exact:true}).click();
+  await page.getByRole('button',{name:'共享屏幕',exact:true}).click();
+  await expect(page.getByRole('button',{name:'停止共享',exact:true})).toBeVisible();
+  await expect(warning).toHaveCount(0);
+  await expect.poll(async()=>Number(await page.getByTestId('frames').textContent())).toBeGreaterThan(0);
+  expect(starts).toBe(2);
+});
+
+test('a browser capture-ended event has a visible reason even inside native fullscreen', async ({page}) => {
+  const roomID=await create(page,'CaptureEndedNotice');
+  await page.getByRole('button',{name:'共享屏幕',exact:true}).click();
+  await expect(page.getByRole('button',{name:'停止共享',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'全屏观看',exact:true}).click();
+  // Canvas capture has no OS stop-sharing UI; simulate its native ended event explicitly.
+  await page.evaluate(()=>{const track=(window as any).raceStream.getVideoTracks()[0];track.stop();track.dispatchEvent(new Event('ended'))});
+  const warning=page.getByTestId('share-interruption');
+  await expect(warning).toContainText('浏览器已结束屏幕采集');
+  await expect(warning).toBeVisible();
+  expect(await warning.evaluate(element=>document.fullscreenElement?.contains(element))).toBe(true);
+  await expect(page.getByRole('button',{name:'共享屏幕',exact:true})).toBeEnabled();
+  await expect.poll(async()=>(await (await page.request.get(`/api/rooms/${roomID}`)).json()).active).toBe(false);
+  expect(await page.evaluate(()=>(window as any).raceSockets.length)).toBe(1);
+  await page.screenshot({path:'../artifacts/local/sharing-interrupted-fullscreen.png'});
+});
+
+test('an external server stop is explained without pretending the connection was lost', async ({page}) => {
+  const roomID=await create(page,'ServerStopNotice');
+  const identity=await (await page.request.get('/api/me')).json();
+  await page.getByRole('button',{name:'共享屏幕',exact:true}).click();
+  await expect(page.getByRole('button',{name:'停止共享',exact:true})).toBeVisible();
+  const response=await page.request.post(`/api/rooms/${roomID}/actions`,{headers:{'X-CSRF-Token':identity.csrf,Origin:new URL(page.url()).origin},data:{action:'stop'}});
+  expect(response.status()).toBe(200);
+  await expect(page.getByTestId('share-interruption')).toContainText('服务器已停止或更新本次共享');
+  await expect(page.getByText('已连接',{exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>(window as any).raceSockets.length)).toBe(1);
+  await page.getByRole('button',{name:'关闭共享中断提示'}).click();
+  await expect(page.getByTestId('share-interruption')).toHaveCount(0);
+});
+
+test('a deliberate local stop and its old capture callback do not show a false interruption', async ({page}) => {
+  await create(page,'IntentionalStopNotice');
+  await page.getByRole('button',{name:'共享屏幕',exact:true}).click();
+  await expect(page.getByRole('button',{name:'停止共享',exact:true})).toBeVisible();
+  await page.evaluate(()=>{const track=(window as any).raceStream.getVideoTracks()[0];(window as any).lateEnded=()=>track.onended?.call(track,new Event('ended'))});
+  await page.getByRole('button',{name:'停止共享',exact:true}).click();
+  await expect(page.getByRole('button',{name:'共享屏幕',exact:true})).toBeEnabled();
+  await page.evaluate(()=>(window as any).lateEnded());
+  await expect(page.getByTestId('share-interruption')).toHaveCount(0);
+  await expect(page.getByTestId('share-state')).toHaveText('等待共享');
+});
+
+test('an encoder failure remains explained after the generic error is dismissed', async ({page}) => {
+  await page.addInitScript(()=>{const Encoder=window.VideoEncoder;window.VideoEncoder=class extends Encoder{constructor(init:VideoEncoderInit){super(init);(window as any).failEncoder=()=>init.error(new DOMException('simulated encoder failure','EncodingError'))}}});
+  const roomID=await create(page,'EncoderFailureNotice');
+  await page.getByRole('button',{name:'共享屏幕',exact:true}).click();
+  await expect(page.getByRole('button',{name:'停止共享',exact:true})).toBeVisible();
+  await page.evaluate(()=>(window as any).failEncoder());
+  await expect(page.getByTestId('share-interruption')).toContainText('屏幕采集或编码发生错误');
+  await page.getByRole('button',{name:'关闭错误提示'}).click();
+  await expect(page.getByTestId('share-interruption')).toBeVisible();
+  await expect.poll(async()=>(await (await page.request.get(`/api/rooms/${roomID}`)).json()).active).toBe(false);
+});

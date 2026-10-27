@@ -1,3 +1,4 @@
+import {openAnnotations,annotationPanel} from './annotationDock';
 import {testBuild} from '../src/testBuild';
 import {test, expect, type Page} from '@playwright/test';
 
@@ -51,7 +52,7 @@ async function clickClosingWindow(pip: Page, name: string) {
   })]);
 }
 async function draw(page: Page) {
-  await page.getByRole('button', {name: '画笔', exact: true}).click();
+  await openAnnotations(page);await page.getByRole('button', {name: '画笔', exact: true}).click();
   const box = (await page.getByTestId('annotation-surface').boundingBox())!;
   await page.mouse.move(box.x + box.width * .3, box.y + box.height * .3);
   await page.mouse.down();
@@ -77,7 +78,7 @@ test('native Document PiP shows remote strokes and named pointers, supports zoom
     await expect.poll(() => pip.getByTestId('feedback-video').evaluate((v: HTMLVideoElement) => v.videoWidth)).toBe(1920);
     await draw(guest);
     await expect(pip.getByTestId('feedback-strokes').locator('polyline')).toHaveCount(1);
-    await guest.getByRole('button', {name: '指示光标', exact: true}).click();
+    await openAnnotations(guest);await guest.getByRole('button', {name: '指示光标', exact: true}).click();
     const box = (await guest.getByTestId('annotation-surface').boundingBox())!;
     await guest.mouse.move(box.x + box.width * .7, box.y + box.height * .4);
     await expect(pip.getByTestId('feedback-pointer')).toHaveText('FeedbackGuest');
@@ -95,11 +96,11 @@ test('native Document PiP shows remote strokes and named pointers, supports zoom
     await expect(pip.getByTestId('feedback-video')).toHaveCount(0);
     await expect(pip.getByText('共享屏幕位置示意 · 不含业务画面')).toBeVisible();
     await expect(pip.getByTestId('feedback-strokes').locator('polyline')).toHaveCount(1);
-    await owner.getByRole('button', {name: '清除全部', exact: true}).click();
+    await annotationPanel(owner,'更多批注操作');await owner.getByRole('button', {name: '清除全部', exact: true}).click();
     await owner.getByRole('button', {name: '确认清除', exact: true}).click();
     await expect(pip.getByTestId('feedback-strokes').locator('polyline')).toHaveCount(0);
     await owner.getByRole('button', {name: '撤销 FeedbackGuest 批注', exact: true}).click();
-    await expect(guest.getByRole('button', {name: '画笔', exact: true})).toHaveCount(0);
+    await openAnnotations(guest);await expect(guest.getByRole('button', {name: '画笔', exact: true})).toHaveCount(0);
     await expect(pip.getByTestId('feedback-pointer')).toHaveCount(0);
     await clickClosingWindow(pip, '关闭反馈小窗');
     await expect.poll(() => pip.isClosed()).toBe(true);
@@ -170,7 +171,7 @@ test('transfer removes feedback access from the old presenter; the new presenter
     await guest.getByRole('button', {name: '共享屏幕', exact: true}).click();
     const next = await open(guest);
     await expect(next.getByRole('button', {name: '完整画面'})).toBeVisible();
-    await expect(guest.getByRole('button', {name: '画笔', exact: true})).toHaveCount(0);
+    await openAnnotations(guest);await expect(guest.getByRole('button', {name: '画笔', exact: true})).toHaveCount(0);
   } finally { await a.close(); await b.close(); }
 });
 
@@ -226,7 +227,7 @@ test('pointer expires in the PiP document even when a clear event is lost', asyn
     await expect.poll(async () => Number(await guest.getByTestId('frames').textContent())).toBeGreaterThan(0);
     await owner.getByRole('button', {name: '允许 FeedbackExpiryGuest 批注', exact: true}).click();
     const pip = await open(owner);
-    await guest.getByRole('button', {name: '指示光标', exact: true}).click();
+    await openAnnotations(guest);await guest.getByRole('button', {name: '指示光标', exact: true}).click();
     const box = (await guest.getByTestId('annotation-surface').boundingBox())!;
     await guest.mouse.move(box.x + box.width * .5, box.y + box.height * .5);
     await expect(pip.getByTestId('feedback-pointer')).toHaveCount(1);

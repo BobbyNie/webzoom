@@ -19,7 +19,7 @@ async function openViewer(page: Page) {
 }
 
 for (const width of [1440, 1920]) {
-  test(`viewer fills browser fullscreen at ${width}px and can exit repeatedly`, async ({page}) => {
+  test(`viewer reserves controls outside the image in browser fullscreen at ${width}px and can exit repeatedly`, async ({page}) => {
     await page.setViewportSize({width, height: 1080});
     await page.addInitScript(() => {
       const request = Element.prototype.requestFullscreen;
@@ -38,16 +38,19 @@ for (const width of [1440, 1920]) {
         const root = document.fullscreenElement;
         const stage = document.querySelector('.screen-stage')!.getBoundingClientRect();
         const canvas = document.querySelector('canvas')!.getBoundingClientRect();
+        const top=document.querySelector('.meeting-view-controls')!.getBoundingClientRect(),footer=document.querySelector('.toolbar')!.getBoundingClientRect(),bottom=document.querySelector('.stage-bottom')!.getBoundingClientRect(),rootBox=root?.getBoundingClientRect();
         return {
           native: !!root,
           controlsInside: root?.contains(document.querySelector('[aria-label="退出全屏"]')),
-          stageFillsViewport: Math.abs(stage.width - innerWidth) <= 1 && Math.abs(stage.height - innerHeight) <= 1,
+          rootFillsViewport: !!rootBox&&Math.abs(rootBox.width-innerWidth)<=1&&Math.abs(rootBox.height-innerHeight)<=1,
+          stageFillsAvailableArea: Math.abs(stage.width-innerWidth)<=1&&Math.abs(stage.height+top.height+bottom.height+footer.height-innerHeight)<=1&&stage.height>innerHeight*.5,
+          controlsOutsideVideo: top.bottom<=stage.top+1&&bottom.top>=stage.bottom-1&&footer.top>=bottom.bottom-1&&footer.bottom<=innerHeight+1,
           canvasFillsStage: Math.abs(canvas.width - stage.width) <= 1 && Math.abs(canvas.height - stage.height) <= 1,
           pageChromeOutside: !root?.contains(document.querySelector('.app-header')) && !root?.contains(document.querySelector('.participants-panel')),
           fit: getComputedStyle(document.querySelector('canvas')!).objectFit,
           navigationUI: (window as unknown as {fullscreenOptions: FullscreenOptions}).fullscreenOptions.navigationUI,
         };
-      })).toEqual({native: true, controlsInside: true, stageFillsViewport: true, canvasFillsStage: true, pageChromeOutside: true, fit: 'contain', navigationUI: 'hide'});
+      })).toEqual({native: true, controlsInside: true, rootFillsViewport: true, stageFillsAvailableArea: true, controlsOutsideVideo: true, canvasFillsStage: true, pageChromeOutside: true, fit: 'contain', navigationUI: 'hide'});
       if (repeat === 0) {
         await page.screenshot({path: `../artifacts/local/viewer-fullscreen-${width}.png`});
         await exit.click();

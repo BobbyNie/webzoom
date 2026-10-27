@@ -1,3 +1,4 @@
+import {openAnnotations} from './annotationDock';
 import {test, expect, type Page} from '@playwright/test';
 
 async function login(page: Page, name: string) {
@@ -56,6 +57,7 @@ test('attendees request; host denies or approves individually and bulk approves 
     await expect(permission(bystander).getByRole('button', {name: '申请批注', exact: true})).toBeEnabled();
     await expect(requests(host)).toContainText('暂无待处理申请');
     await host.getByRole('button', {name: '共享屏幕', exact: true}).click();
+    for (const p of [a,b,bystander])await openAnnotations(p);
     for (const p of [a, b]) await expect(p.getByRole('button', {name: '画笔', exact: true})).toBeVisible();
     await expect(bystander.getByRole('button', {name: '画笔', exact: true})).toHaveCount(0);
     // Verify an approved participant can actually draw through the authoritative WSS path.

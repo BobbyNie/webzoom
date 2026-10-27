@@ -1,3 +1,4 @@
+import {openAnnotations} from './annotationDock';
 import {test, expect, type Page} from '@playwright/test';
 
 async function login(page: Page, name: string) {
@@ -38,7 +39,7 @@ for (const fault of ['lookup', 'handshake'] as const) {
       await login(guest, 'BoundedViewer'); await guest.goto(host.url());
       await expect.poll(async () => Number(await guest.getByTestId('frames').textContent())).toBeGreaterThan(0);
       await host.getByRole('button', {name: '允许 BoundedViewer 批注', exact: true}).click();
-      await expect(guest.getByRole('button', {name: '画笔', exact: true})).toBeEnabled();
+      await openAnnotations(guest);await expect(guest.getByRole('button', {name: '画笔', exact: true})).toBeEnabled();
       let arrived: Promise<void> | undefined;
       if (fault === 'lookup') {
         let started!: () => void, lookups = 0;
@@ -66,7 +67,7 @@ for (const fault of ['lookup', 'handshake'] as const) {
       expect(Date.now() - disconnectedAt).toBeLessThan(28000);
       release();
       await expect.poll(async () => Number(await guest.getByTestId('frames').textContent())).toBeGreaterThan(0);
-      await expect(guest.getByRole('button', {name: '画笔', exact: true})).toBeEnabled();
+      await openAnnotations(guest);await expect(guest.getByRole('button', {name: '画笔', exact: true})).toBeEnabled();
       await expect(host.getByRole('button', {name: '撤销 BoundedViewer 批注', exact: true})).toBeVisible();
       // Exercise the restored grant through the server, not just the button state.
       await guest.getByRole('button', {name: '画笔', exact: true}).click();
