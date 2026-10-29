@@ -10,7 +10,7 @@
 | Go 标准库及运行时 | 1.26.10 | BSD-3-Clause |
 | github.com/coder/websocket | 1.8.15 | ISC |
 | github.com/coreos/go-oidc/v3 | 3.21.0 | Apache-2.0 |
-| github.com/go-jose/go-jose/v4 | 4.1.4 | Apache-2.0 |
+| github.com/go-jose/go-jose/v4 | 4.1.6 | Apache-2.0 |
 | golang.org/x/oauth2 | 0.37.0 | BSD-3-Clause |
 | React / React DOM | 19.3.0 | MIT |
 | scheduler | 0.28.0 | MIT |
