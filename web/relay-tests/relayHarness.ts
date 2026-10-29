@@ -45,7 +45,7 @@ export async function openRoom(browser:Browser,viewers:number,prefix:string,befo
    const context=await browser.newContext({ignoreHTTPSErrors:true});contexts.push(context);
    const page=await context.newPage();pages.push(page);page.on('pageerror',error=>errors.push(`${i}: ${error.message}`));
    await instrument(page,i===0);await login(page,`${prefix}${i}`);
-   if(i===0){await page.getByRole('button',{name:'创建会议',exact:true}).click();await expect(page).toHaveURL(/\/m\//);await page.getByRole('button',{name:'开启网页分流试验'}).click()}
+   if(i===0){await page.getByRole('button',{name:'创建会议',exact:true}).click();await expect(page).toHaveURL(/\/m\//);await expect(page.getByRole('button',{name:'关闭本会议分流'})).toBeEnabled()}
    else {await page.goto(pages[0].url());await expect(page.getByTestId('relay-panel')).toBeVisible()}
   }
   await expect(pages[0].getByTestId('relay-member')).toHaveCount(viewers+1);

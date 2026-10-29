@@ -3,17 +3,18 @@ import {createPortal} from 'react-dom';
 import type {User} from './types';
 import {annotationColors,pointInVideo,transformedVideoRect,clampView,visibleStrokes,strokeHit,initialView,type ViewTransform,type DrawingTool,type Stroke,type AnnotationState,type AnnotationCommand,type Point} from './annotations';
 import StrokeGraphic from './StrokeGraphic';
+import AnnotationIcon from './AnnotationIcon';
 import {exportAnnotatedFrame} from './annotationExport';
 import './annotations.css';
 
 type Tool='view'|'pointer'|'eraser'|DrawingTool;
 type Props={toolbarHost:HTMLElement|null;state:AnnotationState;user:User;owner:boolean;allowed:boolean;active:boolean;width:number;height:number;errorVersion:number;send:(command:AnnotationCommand)=>void;view?:ViewTransform;pan?:boolean;onView?:(view:ViewTransform)=>void;onExitPan?:()=>void;exportEnabled?:boolean;canvas?:HTMLCanvasElement|null;clockOffset?:number};
 type Draft={id:string;color:string;points:Point[];pending:Point[];segment:number;finished:boolean;finalSegment?:number;tool:DrawingTool;width:number;text?:string;createdAt:number};
-const tools:{id:Tool;label:string;icon:string;hint:string}[]=[
- {id:'view',label:'观看',icon:'↖',hint:'退出绘画（Esc）'},{id:'pen',label:'画笔',icon:'✎',hint:'自由绘画（P）'},{id:'pointer',label:'指示光标',icon:'➤',hint:'带姓名的指示光标（L）'},
- {id:'highlighter',label:'荧光笔',icon:'▰',hint:'半透明强调'},{id:'temporary',label:'临时笔',icon:'◷',hint:'笔迹在 5 秒后消失'},
- {id:'line',label:'直线',icon:'╱',hint:'拖动画直线'},{id:'arrow',label:'箭头',icon:'↗',hint:'拖动画箭头'},{id:'rectangle',label:'矩形',icon:'□',hint:'拖动框选区域'},{id:'ellipse',label:'圆形',icon:'○',hint:'拖动画椭圆'},
- {id:'text',label:'文字',icon:'T',hint:'点击画面输入短文字'},{id:'eraser',label:'橡皮擦',icon:'⌫',hint:'点击擦除自己的一整笔（E），可以撤销'}
+const tools:{id:Tool;label:string;hint:string}[]=[
+ {id:'view',label:'观看',hint:'鼠标模式，不绘画（Esc）'},{id:'pen',label:'画笔',hint:'自由绘画（P）'},{id:'pointer',label:'指示光标',hint:'带姓名的指示光标（L）'},
+ {id:'highlighter',label:'荧光笔',hint:'半透明强调'},{id:'temporary',label:'临时笔',hint:'笔迹在 5 秒后消失'},
+ {id:'line',label:'直线',hint:'拖动画直线'},{id:'arrow',label:'箭头',hint:'拖动画箭头'},{id:'rectangle',label:'矩形',hint:'拖动框选区域'},{id:'ellipse',label:'圆形',hint:'拖动画椭圆'},
+ {id:'text',label:'文字',hint:'点击画面输入短文字'},{id:'eraser',label:'橡皮擦',hint:'点击擦除自己的一整笔（E），可以撤销'}
 ];
 const freehand=(tool:Tool)=>tool==='pen'||tool==='highlighter'||tool==='temporary';
 function preferences(){try{const p=JSON.parse(localStorage.getItem('webzoom.annotation.preferences.v1')??'{}');return {color:annotationColors.includes(p.color)?p.color:annotationColors[0],weight:[2,3,6,10].includes(p.weight)?p.weight:3,names:p.names!==false}}catch{return {color:annotationColors[0],weight:3,names:true}}}
@@ -137,18 +138,18 @@ export default function Annotations({toolbarHost,state,user,owner,allowed,active
     <g data-testid="annotation-pending" visibility={hidden?'hidden':undefined}>{completed.filter(s=>s.tool!=='temporary'||s.createdAt+5000>now).map(s=><g key={s.id}>{render(pendingGraphic(s))}</g>)}{draft&&render(pendingGraphic(draft))}</g>
    </svg>
    {!hidden&&<>
-    {Object.values(state.pointers??{}).filter(p=>now-p.updatedAt<1800).map(p=><span key={p.user.id} className="annotation-pointer" data-testid="annotation-pointer" style={{left:visible.left+p.point.x*visible.width,top:visible.top+p.point.y*visible.height,color:p.color}}><span className="pointer-symbol">➤</span>{names&&<span className="pointer-name">{p.user.name}</span>}</span>)}
+    {Object.values(state.pointers??{}).filter(p=>now-p.updatedAt<1800).map(p=><span key={p.user.id} className="annotation-pointer" data-testid="annotation-pointer" style={{left:visible.left+p.point.x*visible.width,top:visible.top+p.point.y*visible.height,color:p.color}}><AnnotationIcon name="view" className="pointer-symbol"/>{names&&<span className="pointer-name">{p.user.name}</span>}</span>)}
     {names&&strokes.slice(-8).filter(s=>s.user.id!==user.id&&now-(seenAuthors.current.get(`${s.user.id}:${s.id}`)??0)<2500).map(s=><span className="annotation-author" key={`${s.user.id}:${s.id}`} style={{left:Math.max(0,Math.min(box.width-100,visible.left+s.points[0].x*visible.width)),top:Math.max(0,Math.min(box.height-20,visible.top+s.points[0].y*visible.height)),color:s.color==='#ffffff'?'#334155':s.color}}>{s.user.name}</span>)}
    </>}
    {toolbarHost&&createPortal(<div ref={toolbar} className={`annotation-toolbar ${collapsed?'collapsed':''}`} aria-label="屏幕批注工具">
     <div className="annotation-toolbar-row">
-     <button type="button" className="annotation-toggle" aria-label={collapsed?'展开工具栏':'收起工具栏'} aria-expanded={!collapsed} title={collapsed?hidden?'展开批注工具（笔迹已隐藏，仅自己）':'展开批注工具':'收起批注工具，不删除笔迹'} onClick={collapse}><span aria-hidden="true">✎</span><span>批注</span><span aria-hidden="true">{collapsed?'⌃':'⌄'}</span></button>
+     <button type="button" className="annotation-toggle" aria-label={collapsed?'展开工具栏':'收起工具栏'} aria-expanded={!collapsed} title={collapsed?hidden?'展开批注工具（笔迹已隐藏，仅自己）':'展开批注工具':'收起批注工具，不删除笔迹'} onClick={collapse}><AnnotationIcon name="pen"/><span>批注</span><AnnotationIcon name={collapsed?'chevron-up':'chevron-down'}/></button>
      {!collapsed&&<>
-      {allowed?<div className="annotation-tools" role="group" aria-label="批注工具选择">{tools.map(t=><button key={t.id} type="button" aria-label={t.label} title={`${t.label} · ${t.hint}`} aria-pressed={tool===t.id&&!pan} disabled={!canUse} onClick={()=>select(t.id)}><span aria-hidden="true">{t.icon}</span></button>)}</div>:<span className="annotation-readonly">仅观看 · 可在参与者面板申请权限</span>}
+      {allowed?<div className="annotation-tools" role="group" aria-label="批注工具选择">{tools.map(t=><button key={t.id} type="button" aria-label={t.label} title={`${t.label} · ${t.hint}`} aria-pressed={tool===t.id&&!pan} disabled={!canUse} onClick={()=>select(t.id)}><AnnotationIcon name={t.id}/></button>)}</div>:<span className="annotation-readonly">仅观看 · 可在参与者面板申请权限</span>}
       <div className="annotation-utilities">
-       {allowed&&<><button type="button" aria-label="笔迹设置" title="颜色与笔宽" aria-expanded={panel==='style'} onClick={()=>setPanel(p=>p==='style'?null:'style')}><span className="annotation-color-dot" style={{background:color}}/><span aria-hidden="true">⌄</span></button><button type="button" aria-label="撤销" disabled={!editEnabled||!history.undo} title="撤销自己的上一步（Ctrl/⌘+Z）" onClick={()=>command('undo')}>↶</button></>}
-       <button type="button" aria-label={hidden?'显示批注':'隐藏批注'} aria-pressed={hidden} title={hidden?'显示笔迹（仅自己）':'隐藏笔迹（仅自己，不删除）'} onClick={hide}>{hidden?'◉':'⊘'}</button>
-       <button type="button" aria-label="更多批注操作" title="重做、清除与显示设置" aria-expanded={panel==='more'} onClick={()=>setPanel(p=>p==='more'?null:'more')}>•••</button>
+       {allowed&&<><button type="button" aria-label="笔迹设置" title="颜色与笔宽" aria-expanded={panel==='style'} onClick={()=>setPanel(p=>p==='style'?null:'style')}><span className="annotation-color-dot" style={{background:color}}/><AnnotationIcon name="chevron-down"/></button><button type="button" aria-label="撤销" disabled={!editEnabled||!history.undo} title="撤销自己的上一步（Ctrl/⌘+Z）" onClick={()=>command('undo')}><AnnotationIcon name="undo"/></button></>}
+       <button type="button" aria-label={hidden?'显示批注':'隐藏批注'} aria-pressed={hidden} title={hidden?'显示笔迹（仅自己）':'隐藏笔迹（仅自己，不删除）'} onClick={hide}><AnnotationIcon name={hidden?'eye-off':'eye'}/></button>
+       <button type="button" aria-label="更多批注操作" title="重做、清除与显示设置" aria-expanded={panel==='more'} onClick={()=>setPanel(p=>p==='more'?null:'more')}><AnnotationIcon name="more"/></button>
       </div>
      </>}
     </div>
@@ -165,7 +166,7 @@ export default function Annotations({toolbarHost,state,user,owner,allowed,active
      {exportEnabled&&<button type="button" disabled={!active||waiting||saving||!canvas} title="保存完整共享画面，不含尚未确认的笔迹" onClick={async()=>{if(!canvas)return;if(!window.confirm('截图可能包含公司业务内容。确认你有权保存到此电脑？'))return;setSaving(true);try{await exportAnnotatedFrame(canvas,surface.current,!hidden);setHint('截图已生成，请查看浏览器下载。')}catch(e){setHint((e as Error).message)}finally{setSaving(false)}}}>{saving?'保存中…':'保存截图'}</button>}
     </div>}
     {!collapsed&&(hidden||pan||waiting)&&<span className="annotation-live-status" role="status">{hidden?'批注已隐藏 · 仅自己':pan?'拖动画面 · 不绘画':completed.some(s=>now-s.createdAt>5000)?'同步较慢，请稍候':'正在同步笔迹…'}</span>}
-    {hint&&<span className="annotation-dock-status annotation-hint" role="status">{hint}<button type="button" aria-label="关闭批注提示" onClick={()=>setHint('')}>×</button></span>}
+    {hint&&<span className="annotation-dock-status annotation-hint" role="status">{hint}<button type="button" aria-label="关闭批注提示" onClick={()=>setHint('')}><AnnotationIcon name="close"/></button></span>}
    </div>,toolbarHost)}
    {text&&canUse&&<form className="annotation-text-editor" aria-label="输入文字批注" onSubmit={event=>{event.preventDefault();const value=text.value.trim();if(!value||[...value].length>160){setHint('请输入 1～160 个字。');return}if(completedRef.current.length>=8){setHint('请等待当前笔迹同步完成。');return}queue({id:crypto.randomUUID(),color,tool:'text',width:weight,text:value,points:[text.point],pending:[text.point],segment:0,finished:true,createdAt:Date.now()});setText(null)}}>
     <label>文字批注（最多 160 字）<input autoFocus aria-label="批注文字" value={text.value} maxLength={320} onChange={event=>setText({...text,value:event.target.value.replace(/[\r\n]/g,' ')})} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();setText(null)}}}/></label><div><button type="submit">添加文字</button><button type="button" onClick={()=>setText(null)}>取消</button></div>

@@ -140,6 +140,7 @@ func (h *Hub) Create(u User) (Snapshot, error) {
 	now := h.cfg.Now()
 	r := &room{Snapshot: Snapshot{ID: token(), OwnerID: u.ID, PublisherID: u.ID, CreatedAt: now, ExpiresAt: now.Add(8 * time.Hour)}, peers: map[string]*Peer{}, emptyAt: now}
 	r.BrowserRelayAvailable = h.cfg.BrowserRelayEnabled
+	r.BrowserRelayEnabled = h.cfg.BrowserRelayEnabled
 	r.BrowserRelayMaxViewers = h.cfg.BrowserRelayMaxViewers
 	h.rooms[r.ID] = r
 	return snapshot(r), nil

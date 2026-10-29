@@ -39,8 +39,8 @@ func relayFixtureConfig(t *testing.T, c Config, viewers int) (*Hub, Snapshot, []
 			relayPlan(joined)
 		}
 	}
-	if _, err = h.Action(r.ID, owner.ID, "browser-relay-on", ""); err != nil {
-		t.Fatal(err)
+	if !r.BrowserRelayEnabled {
+		t.Fatal("new room did not enable relay by default")
 	}
 	return h, r, people
 }
@@ -65,7 +65,7 @@ func relayPlan(p *Peer) *BrowserPlan {
 		}
 	}
 }
-func TestBrowserRelayOptInAndCapacity(t *testing.T) {
+func TestBrowserRelayDeploymentGateAndCapacity(t *testing.T) {
 	h, r, p, _ := setup(t)
 	if r.BrowserRelayAvailable {
 		t.Fatal("default enabled")
@@ -224,11 +224,14 @@ func TestBrowserRelaySignalScopeAndDirection(t *testing.T) {
 		}
 	}
 }
-func TestBrowserRelayFlagDoesNotWrapOrdinaryMedia(t *testing.T) {
+func TestBrowserRelayOptOutDoesNotWrapOrdinaryMedia(t *testing.T) {
 	h := New(Config{BrowserRelayEnabled: true})
 	r, _ := h.Create(owner)
 	p, _ := h.Join(r.ID, owner, "p")
 	v, _ := h.Join(r.ID, viewer, "v")
+	if _, err := h.Action(r.ID, owner.ID, "browser-relay-off", ""); err != nil {
+		t.Fatal(err)
+	}
 	s := relayStart(t, h, r)
 	raw := frame(s.Epoch, 1, true)
 	h.Publish(p, raw)
@@ -272,5 +275,61 @@ func TestBrowserRelayTransferChangesEpochAndStopsOldSource(t *testing.T) {
 	r0 := h.rooms[r.ID]
 	if root := r0.peers[r0.browser.root]; root == nil || root.Media.Len() != 1 || root == p[1] {
 		t.Fatal("new source not delivered to distinct root")
+	}
+}
+
+func TestBrowserRelayRoomDefaultAndOverrideSurviveLifecycle(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		name := "default-on"
+		if !enabled {
+			name = "owner-opt-out"
+		}
+		t.Run(name, func(t *testing.T) {
+			h, r, people := relayFixture(t, 200, 2)
+			if !r.BrowserRelayAvailable || !r.BrowserRelayEnabled {
+				t.Fatal("deployment-enabled room requires no manual opt-in")
+			}
+			if !enabled {
+				if _, err := h.Action(r.ID, owner.ID, "browser-relay-off", ""); err != nil {
+					t.Fatal(err)
+				}
+			}
+			check := func() {
+				t.Helper()
+				s, err := h.Get(r.ID)
+				if err != nil || s.BrowserRelayEnabled != enabled || !s.BrowserRelayAvailable {
+					t.Fatalf("room setting changed: %+v, %v", s, err)
+				}
+			}
+			check() // Refresh reads the saved room value, not a new default.
+			for i := 0; i < 2; i++ {
+				if _, err := h.Action(r.ID, owner.ID, "start", ""); err != nil {
+					t.Fatal(err)
+				}
+				check()
+				if _, err := h.Action(r.ID, owner.ID, "stop", ""); err != nil {
+					t.Fatal(err)
+				}
+				check()
+			}
+			next := people[1]
+			if _, err := h.Action(r.ID, owner.ID, "transfer", next.User.ID); err != nil {
+				t.Fatal(err)
+			}
+			check()
+			if _, err := h.Action(r.ID, next.User.ID, "start", ""); err != nil {
+				t.Fatal(err)
+			}
+			check()
+			h.Disconnect(next)
+			if _, err := h.Join(r.ID, next.User, next.SessionID); err != nil {
+				t.Fatal(err)
+			}
+			check()
+			other, err := h.Create(User{ID: "other-owner"})
+			if err != nil || !other.BrowserRelayEnabled {
+				t.Fatalf("room override leaked into new room: %+v, %v", other, err)
+			}
+		})
 	}
 }

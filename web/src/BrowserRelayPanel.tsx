@@ -26,9 +26,10 @@ export default function BrowserRelayPanel({status:s,overview,maxViewers,enabled,
  useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer)},[]);
  const rows=overview?.participants??[],names=new Map(rows.map(row=>[row.user.id,row.user.name]));
  const states=rows.map(row=>overview?reception(row,overview,now):null);
- return <section className="relay-panel" aria-label="网页协作分流试验" data-testid="relay-panel" data-role={s.role} data-server-backup={!!s.serverBackup} data-center-bytes={s.centerBytes} data-peer-bytes={s.peerBytes} data-sent-bytes={s.sentBytes} data-rejected={s.rejected}>
+ return <section className="relay-panel" aria-label="网页协作分流" data-testid="relay-panel" data-role={s.role} data-server-backup={!!s.serverBackup} data-center-bytes={s.centerBytes} data-peer-bytes={s.peerBytes} data-sent-bytes={s.sentBytes} data-rejected={s.rejected}>
   <div className="relay-heading"><div><h3>网页协作分流</h3><p>纯网页，无需插件或 EXE · 当前上限 {maxViewers??overview?.maxViewers??64} 位观众 + 1 位共享者</p></div>
-  {owner&&<button className="button secondary" disabled={disabled} onClick={toggle}>{enabled?'关闭网页分流试验':'开启网页分流试验'}</button>}</div>
+  {owner&&<button className="button secondary" disabled={disabled} onClick={toggle}>{enabled?'关闭本会议分流':'开启本会议分流'}</button>}</div>
+  <p data-testid="relay-enabled">网页分流：<strong>{enabled?'已开启 · 共享后自动安排':'已关闭'}</strong>{owner&&<small>如需切换，请先停止共享；仅对本会议生效。</small>}</p>
   <p>本机接收：<strong>{!enabled?'网页分流未开启':!s.active?'未在共享':s.role==='publisher'?'正在共享':(s.planFrames??0)>0&&(s.mediaAgeMs??Infinity)<4000?'画面接收正常':'接收状态待确认'}</strong></p>
   <p>画面来源：<strong data-testid="relay-role">{labels[s.role]}</strong> · {s.reason||'开始共享后自动安排转发'}</p>
   {enabled&&<>

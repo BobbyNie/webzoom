@@ -36,7 +36,7 @@ test(`native dynamic endurance with ${viewerCount} viewers, browser memory count
  };
  const addViewer=async()=>{const {browser,page}=await launch(serial%2?'chrome':'msedge');await login(page,`NativeEnduranceViewer${serial++}`);await page.goto(owner!.url());await expect(page.getByTestId('relay-panel')).toBeVisible();entries.push({browser,page})};
  try{
-  const opened=await launch('chrome',true);owner=opened.page;await login(owner,'NativeEnduranceOwner');await owner.getByRole('button',{name:'创建会议',exact:true}).click();await expect(owner).toHaveURL(/\/m\//);await owner.getByRole('button',{name:'开启网页分流试验'}).click();
+  const opened=await launch('chrome',true);owner=opened.page;await login(owner,'NativeEnduranceOwner');await owner.getByRole('button',{name:'创建会议',exact:true}).click();await expect(owner).toHaveURL(/\/m\//);await expect(owner.getByRole('button',{name:'关闭本会议分流'})).toBeEnabled();
   source=await opened.context.newPage();if(diagnostics)stallProbes.push(await stallProbe(source,'source'));source.on('pageerror',e=>errors.push('source: '+e.message));await source.route('**/__native_endurance__',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:nativeDocument(title)}));await source.goto(`${origin}/__native_endurance__`);await motion(source,'high');
   for(let i=0;i<viewerCount;i++)await addViewer();await expect(owner.getByTestId('relay-member')).toHaveCount(viewerCount+1);
   const apis=await nativeAPIs(owner);for(const [name,implementation] of Object.entries(apis))expect(implementation,`${name} remains native`).toContain('[native code]');

@@ -25,7 +25,7 @@ test('real DataChannels: one center copy, three peer viewers, root departure rec
   for(let i=0;i<5;i++){const c=await browser.newContext({ignoreHTTPSErrors:true});contexts.push(c);const p=await c.newPage();pages.push(p);p.on('pageerror',e=>errors.push(e.message));p.on('websocket',ws=>ws.on('framereceived',e=>{if(Buffer.isBuffer(e.payload))binary[i]+=e.payload.length}));await capture(p)}
   const [owner,root,leaf1,leaf2,leaf3]=pages;
   await login(owner,'AliceRelay');await owner.getByRole('button',{name:'创建会议',exact:true}).click();await expect(owner).toHaveURL(/\/m\//);const url=owner.url();
-  await owner.getByRole('button',{name:'开启网页分流试验'}).click();await expect(owner.getByRole('button',{name:'关闭网页分流试验'})).toBeVisible();
+  await expect(owner.getByRole('button',{name:'关闭本会议分流'})).toBeEnabled();
   for(const [i,p] of [root,leaf1,leaf2,leaf3].entries()){await login(p,['BobRelay','CarolRelay','DanaRelay','EveRelay'][i]);await p.goto(url);await expect(p.getByTestId('relay-panel')).toBeVisible()}
   await owner.getByRole('button',{name:'共享屏幕',exact:true}).click();
   await role(root,'root');await role(leaf1,'peer');await role(leaf2,'peer');await role(leaf3,'peer');await frames(root);await frames(leaf1);await frames(leaf2);await frames(leaf3);
@@ -57,7 +57,7 @@ for(const limit of [20,200])test(`blocked peer path: budget ${limit} gives ${lim
   const owner=admin=await contexts[0].newPage(),root=await contexts[1].newPage(),leaf=await contexts[2].newPage();await capture(owner);
   await leaf.addInitScript(()=>{Object.defineProperty(window,'RTCPeerConnection',{value:class{constructor(){throw Error('simulated IT policy block')}}})});
   await login(owner,'TestAdmin');const me=await (await owner.request.get('/api/me')).json();expect((await owner.request.post('/api/admin/bandwidth',{headers:{'X-CSRF-Token':me.csrf,Origin:new URL(admin!.url()).origin},data:{limitMbps:limit}})).ok()).toBeTruthy();
-  await owner.getByRole('button',{name:'创建会议',exact:true}).click();await expect(owner).toHaveURL(/\/m\//);const url=owner.url();await owner.getByRole('button',{name:'开启网页分流试验'}).click();
+  await owner.getByRole('button',{name:'创建会议',exact:true}).click();await expect(owner).toHaveURL(/\/m\//);const url=owner.url();await expect(owner.getByRole('button',{name:'关闭本会议分流'})).toBeEnabled();
   await login(root,'BobFallback');await root.goto(url);await expect(root.getByTestId('relay-panel')).toBeVisible();await login(leaf,'CarolFallback');await leaf.goto(url);await expect(leaf.getByTestId('relay-panel')).toBeVisible();
   await owner.getByRole('button',{name:'共享屏幕',exact:true}).click();await role(leaf,limit===20?'waiting':'direct');await frames(root);
   if(limit===200){await frames(leaf);expect(await bytes(leaf,'peer')).toBe(0);await expect.poll(()=>bytes(leaf,'center')).toBeGreaterThan(0)}else{expect(await bytes(leaf,'center')).toBe(0);await expect(leaf.getByTestId('relay-panel')).toContainText('额度不足')}
@@ -81,7 +81,7 @@ test('late joins retain healthy channels, bounded roots and real channel failure
    p.on('pageerror',e=>errors.push(e.message));p.on('websocket',ws=>ws.on('framereceived',e=>{if(Buffer.isBuffer(e.payload))binary[i]+=e.payload.length}));await capture(p);await observeConnections(p);
   }
   const [owner]=pages;await login(owner,'AliceExpanded');await owner.getByRole('button',{name:'创建会议',exact:true}).click();await expect(owner).toHaveURL(/\/m\//);const url=owner.url();
-  await owner.getByRole('button',{name:'开启网页分流试验'}).click();
+  await expect(owner.getByRole('button',{name:'关闭本会议分流'})).toBeEnabled();
   const names=['BobExpanded','CarolExpanded','DanaExpanded','EveExpanded','FayeExpanded'];
   for(let i=1;i<=3;i++){await login(pages[i],names[i-1]);await pages[i].goto(url);await expect(pages[i].getByTestId('relay-panel')).toBeVisible()}
   await owner.getByRole('button',{name:'共享屏幕',exact:true}).click();await frames(pages[2]);
@@ -149,7 +149,7 @@ test('owner marks missing receiver reports stale even while real peer media keep
    };
   });
   await login(owner,'AliceStale');await owner.getByRole('button',{name:'创建会议',exact:true}).click();await expect(owner).toHaveURL(/\/m\//);const url=owner.url();
-  await owner.getByRole('button',{name:'开启网页分流试验'}).click();
+  await expect(owner.getByRole('button',{name:'关闭本会议分流'})).toBeEnabled();
   await login(root,'BobStale');await root.goto(url);await expect(root.getByTestId('relay-panel')).toBeVisible();
   await login(leaf,'CarolStale');await leaf.goto(url);await expect(leaf.getByTestId('relay-panel')).toBeVisible();
   await owner.getByRole('button',{name:'共享屏幕',exact:true}).click();await role(leaf,'peer');await frames(leaf);
@@ -162,4 +162,47 @@ test('owner marks missing receiver reports stale even while real peer media keep
   await leaf.evaluate(()=>{(window as Window&{pauseRelayReports?:boolean}).pauseRelayReports=false});
   await expect(row).toHaveAttribute('data-receiving','true',{timeout:10000});await finish(owner);
  }finally{for(const c of contexts)await c.close()}
+});
+
+test('new rooms auto-enable relay, owner opt-out persists and diagnostics stay available',async({browser})=>{
+ const contexts:BrowserContext[]=[];
+ try{
+  const pages:Page[]=[];
+  for(let i=0;i<3;i++){
+   const context=await browser.newContext({ignoreHTTPSErrors:true});contexts.push(context);
+   const page=await context.newPage();pages.push(page);await capture(page);await observeConnections(page);
+  }
+  const [owner,root,leaf]=pages;
+  await login(owner,'AutoRelayOwner');await owner.getByRole('button',{name:'创建会议',exact:true}).click();await expect(owner).toHaveURL(/\/m\//);
+  const url=owner.url();
+  await expect(owner.getByRole('button',{name:'关闭本会议分流'})).toBeEnabled();
+  await expect(owner.getByTestId('relay-enabled')).toContainText('已开启');
+  await expect(owner.getByTestId('relay-overview')).toBeVisible();
+  await owner.getByRole('button',{name:'关闭本会议分流'}).click();
+  await expect(owner.getByTestId('relay-enabled')).toContainText('已关闭');
+  await owner.reload();await expect(owner.getByRole('button',{name:'开启本会议分流'})).toBeEnabled();
+  for(const [i,page] of [root,leaf].entries()){
+   await login(page,['AutoRelayRoot','AutoRelayLeaf'][i]);await page.goto(url);await expect(page.getByTestId('relay-panel')).toBeVisible();
+   await expect(page.getByRole('button',{name:/本会议分流/})).toHaveCount(0);
+  }
+  await owner.getByRole('button',{name:'共享屏幕',exact:true}).click();await frames(root);await frames(leaf);
+  expect(await connectionCount(root)).toBe(0);expect(await connectionCount(leaf)).toBe(0);
+  await expect(owner.getByRole('button',{name:'开启本会议分流'})).toBeDisabled();
+  await owner.getByRole('button',{name:'停止共享',exact:true}).click();
+  await expect(owner.getByRole('button',{name:'开启本会议分流'})).toBeEnabled();
+  await owner.getByRole('button',{name:'开启本会议分流'}).click();
+  await expect(owner.getByTestId('relay-overview')).toBeVisible();
+  await expect(owner.getByRole('button',{name:'复制诊断信息'})).toBeVisible();
+  await owner.getByRole('button',{name:'共享屏幕',exact:true}).click();
+  // Assignment is automatic; user IDs, not join order or fixture variable names, determine the root.
+  await expect.poll(async()=>Promise.all([root,leaf].map(page=>page.getByTestId('relay-panel').getAttribute('data-role'))).then(roles=>roles.sort())).toEqual(['peer','root']);
+  const peerPage=await root.getByTestId('relay-panel').getAttribute('data-role')==='peer'?root:leaf;
+  const rootPage=peerPage===root?leaf:root;
+  await frames(root);await frames(leaf);
+  await expect.poll(()=>bytes(peerPage,'peer')).toBeGreaterThan(0);
+  await expect.poll(()=>bytes(rootPage,'sent')).toBeGreaterThan(0);
+  expect(await bytes(peerPage,'center')).toBe(0);
+  await expect(owner.getByRole('button',{name:'关闭本会议分流'})).toBeDisabled();
+  await finish(owner);
+ }finally{for(const context of contexts)await context.close()}
 });

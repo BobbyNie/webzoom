@@ -88,3 +88,55 @@ test('a small touch screen can choose a tool and draw without the toolbar coveri
   await touch.screenshot({path:'test-results/annotation-tools-touch.png',fullPage:true});await session.detach();
  }finally{await touchContext.close();await f.close()}
 });
+
+
+test('custom icons stay distinct, accessible and docked on desktop and mobile',async({browser},testInfo)=>{
+ const f=await fixture(browser,'VectorIcons');const {owner,guest}=f;
+ try{
+  const tools=owner.getByRole('group',{name:'批注工具选择',exact:true});
+  const labels=['观看','画笔','指示光标','荧光笔','临时笔','直线','箭头','矩形','圆形','文字','橡皮擦'];
+  const icons=['view','pen','pointer','highlighter','temporary','line','arrow','rectangle','ellipse','text','eraser'];
+  for(let i=0;i<labels.length;i++){
+   const button=tools.getByRole('button',{name:labels[i],exact:true});
+   await expect(button).toHaveAttribute('title',new RegExp(labels[i]));
+   await expect(button.locator('svg')).toHaveAttribute('data-icon',icons[i]);
+   await expect(button.locator('svg')).toHaveAttribute('aria-hidden','true');
+   await button.click();await expect(button).toHaveAttribute('aria-pressed','true');
+   await expect(button.locator('svg')).toHaveCSS('color','rgb(255, 255, 255)');
+  }
+  await gesture(owner,'箭头');await expect(objects(guest)).toHaveCount(1);
+  await owner.getByRole('button',{name:'指示光标',exact:true}).click();
+  const surface=await owner.getByTestId('annotation-surface').boundingBox();expect(surface).not.toBeNull();
+  await owner.mouse.move(surface!.x+surface!.width*.6,surface!.y+surface!.height*.6);
+  await expect(guest.getByTestId('annotation-pointer').locator('svg')).toHaveAttribute('data-icon','view');
+  await expect(guest.getByTestId('annotation-pointer')).toContainText('VectorIconsOwner');
+  await owner.getByRole('button',{name:'隐藏批注',exact:true}).click();
+  await expect(owner.getByRole('button',{name:'显示批注',exact:true}).locator('svg')).toHaveAttribute('data-icon','eye-off');
+  await owner.getByRole('button',{name:'显示批注',exact:true}).click();
+  await expect(owner.getByRole('button',{name:'隐藏批注',exact:true}).locator('svg')).toHaveAttribute('data-icon','eye');
+  await expectDockOutsideVideo(owner);
+  await owner.getByRole('button',{name:'观看',exact:true}).click();
+  await owner.locator('.annotation-toolbar').screenshot({path:testInfo.outputPath('toolbar-desktop.png')});
+  // Preview the actual shipped SVGs, not a separate mockup of the artwork.
+  const samples=await tools.getByRole('button').evaluateAll(buttons=>buttons.map(button=>({label:button.getAttribute('aria-label'),svg:button.querySelector('svg')!.outerHTML})));
+  const gallery=await browser.newPage({viewport:{width:960,height:480},deviceScaleFactor:2});
+  try{
+   await gallery.setContent(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><style>
+    *{box-sizing:border-box}body{margin:0;padding:28px;background:#f4f7f6;color:#334155;font:14px "Microsoft YaHei",sans-serif}h1{margin:0 0 6px;font-size:22px;color:#142f29}p{margin:0 0 22px;color:#64748b}.grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}.tile{background:white;border:1px solid #dce5e2;border-radius:12px;padding:16px 8px;text-align:center}.states{display:flex;gap:8px;justify-content:center;margin-bottom:10px}.state{display:grid;place-items:center;width:36px;height:36px;border-radius:7px;background:#f8fafc;border:1px solid #cbd5e1}.state.selected{background:#087f6a;color:white;border-color:#087f6a}.state.dark{background:#1e293b;color:#f8fafc;border-color:#1e293b}.annotation-icon{display:block;width:20px;height:20px}
+   </style><h1>批注工具 · 专属矢量图标</h1><p>鼠标观看 / 指示光标 / 绘制箭头，三种用途、三种轮廓。每格展示普通、选中和深色底预览。</p><div class="grid">${samples.map(s=>`<div class="tile"><div class="states"><div class="state">${s.svg}</div><div class="state selected">${s.svg}</div><div class="state dark">${s.svg}</div></div>${s.label}</div>`).join('')}</div></html>`);
+   await gallery.screenshot({path:testInfo.outputPath('icon-preview.png'),fullPage:true});
+  }finally{await gallery.close()}
+  await owner.setViewportSize({width:390,height:844});
+  // The existing narrow-screen policy collapses the dock after the resize settles.
+  await expect(owner.getByRole('button',{name:'展开工具栏',exact:true})).toBeVisible();
+  await openAnnotations(owner);
+  await tools.getByRole('button',{name:'橡皮擦',exact:true}).scrollIntoViewIfNeeded();
+  await expect(tools.getByRole('button',{name:'橡皮擦',exact:true})).toBeInViewport();
+  await tools.getByRole('button',{name:'观看',exact:true}).scrollIntoViewIfNeeded();
+  await expect(tools.getByRole('button',{name:'观看',exact:true})).toBeInViewport();
+  await expectDockOutsideVideo(owner);
+  await owner.locator('.annotation-toolbar').screenshot({path:testInfo.outputPath('toolbar-mobile.png')});
+  await owner.getByRole('button',{name:'收起工具栏',exact:true}).click();
+  await expect(owner.getByRole('button',{name:'展开工具栏',exact:true}).locator('svg[data-icon="pen"]')).toHaveCount(1);
+ }finally{await f.close()}
+});

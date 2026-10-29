@@ -57,3 +57,23 @@ describe('background and rate reporting',()=>{
   const html=renderToStaticMarkup(<BrowserRelayPanel status={emptyRelayStatus()} overview={data} enabled owner disabled={false} toggle={()=>{}}/>);
   expect(html).not.toContain('1.00 MB');expect(html).toContain('不会拿历史流量代替');expect(html).not.toContain('故障回退');
  });
+
+describe('meeting relay controls',()=>{
+ const props={status:emptyRelayStatus(),disabled:false,toggle:()=>{}};
+ it('shows enabled state, owner opt-out and retained diagnostics without experiment wording',()=>{
+  const html=renderToStaticMarkup(<BrowserRelayPanel {...props} enabled owner/>);
+  expect(html).toContain('关闭本会议分流');expect(html).toContain('已开启 · 共享后自动安排');
+  expect(html).toContain('全员接收情况');expect(html).toContain('复制诊断信息');expect(html).toContain('流量统计范围');
+  expect(html).toContain('如需切换，请先停止共享');expect(html).not.toContain('试验');
+ });
+ it('keeps opt-in for a manually disabled room and hides room controls from viewers',()=>{
+  const html=renderToStaticMarkup(<BrowserRelayPanel {...props} enabled={false} owner/>);
+  expect(html).toContain('开启本会议分流');expect(html).toContain('已关闭');
+  const viewer=renderToStaticMarkup(<BrowserRelayPanel {...props} enabled owner={false}/>);
+  expect(viewer).not.toContain('关闭本会议分流');expect(viewer).not.toContain('全员接收情况');
+ });
+ it('disables the room toggle during sharing or when the meeting is unavailable',()=>{
+  const html=renderToStaticMarkup(<BrowserRelayPanel {...props} enabled owner disabled/>);
+  expect(html).toMatch(/<button[^>]*disabled=""[^>]*>关闭本会议分流/);
+ });
+});

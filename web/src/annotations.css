@@ -42,3 +42,9 @@
 .annotation-live-status{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 @media(max-width:760px){.annotation-tools{flex-wrap:nowrap;overflow-x:auto;min-width:0;max-width:100%;padding-bottom:3px}.annotation-toolbar .annotation-tools button{flex:0 0 36px}}
 @media(pointer:coarse){.annotation-toolbar button,.annotation-toolbar .annotation-tools button{min-height:40px;min-width:40px}}
+
+/* Stable, project-drawn vectors; button sizes and the outside-video dock stay unchanged. */
+.annotation-icon{display:block;width:20px;height:20px;flex:none;overflow:visible;pointer-events:none}
+.annotation-toggle .annotation-icon:last-child,.annotation-utilities [aria-label="笔迹设置"] .annotation-icon{width:14px;height:14px}
+.annotation-toolbar .annotation-tools button{font-size:inherit}
+.annotation-pointer .pointer-symbol{width:24px;height:24px;transform:translate(-4px,-3px);filter:drop-shadow(0 1px 1px #fff) drop-shadow(0 0 1px #fff)}

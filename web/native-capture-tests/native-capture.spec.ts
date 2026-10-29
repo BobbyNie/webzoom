@@ -16,7 +16,7 @@ test('native tab capture across separate headed Chrome and Edge processes',async
  try{
   const owner=await launch('chrome',true);await login(owner,'NativeCaptureOwner');
   await owner.getByRole('button',{name:'创建会议',exact:true}).click();await expect(owner).toHaveURL(/\/m\//);
-  await owner.getByRole('button',{name:'开启网页分流试验'}).click();
+  await expect(owner.getByRole('button',{name:'关闭本会议分流'})).toBeEnabled();
   const source=await owner.context().newPage();
   await source.route('**/__native_capture_evidence__',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>${title}</title><style>body{margin:0;color:white;background:rgb(210,40,50);font:24px sans-serif}header{padding:28px;background:#0009}h1{font-size:32px;margin:0 0 12px}footer{position:fixed;bottom:0;padding:28px;background:#0009;width:100%;box-sizing:border-box}.bar{height:16px;background:white;animation:move 2s linear infinite}@keyframes move{from{width:5%}to{width:95%}}</style><header><h1>WebZoom · 原生浏览器标签页采集实测</h1><div id="stage">阶段 red</div></header><footer><p>独立测试页面 · 无公司数据 · 画面由浏览器实际绘制</p><p id="clock"></p><div class="bar"></div></footer><script>setInterval(()=>document.querySelector('#clock').textContent=new Date().toISOString(),100)</script></html>`}));
   await source.goto(`${origin}/__native_capture_evidence__`);
